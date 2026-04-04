@@ -16,7 +16,6 @@ export default async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/transactions/:path*",
     "/settings/:path*",
     "/export/:path*",
     "/import/:path*",

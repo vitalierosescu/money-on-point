@@ -45,7 +45,7 @@ export default function TransactionCreateForm({
 
   useEffect(() => {
     if (createState?.success && createState.data) {
-      router.push(`/transactions/${createState.data.id}`)
+      router.push(`/invoices`)
     }
   }, [createState, router])
 

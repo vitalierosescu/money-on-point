@@ -119,7 +119,6 @@ export async function saveFileAsTransactionAction(
     await updateTransactionFiles(transaction.id, user.id, [file.id])
 
     revalidatePath("/unsorted")
-    revalidatePath("/transactions")
 
     return { success: true, data: transaction }
   } catch (error) {

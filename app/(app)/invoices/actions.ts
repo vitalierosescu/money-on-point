@@ -1,6 +1,7 @@
 "use server"
 
 import { getCurrentUser } from "@/lib/auth"
+import { prisma } from "@/lib/db"
 import { Prisma } from "@/prisma/client"
 import {
   createInvoice,
@@ -11,12 +12,30 @@ import {
   CreateInvoiceData,
 } from "@/models/invoices"
 import { recordPayment } from "@/models/payments"
-import { createTransaction } from "@/models/transactions"
+import { createTransaction, updateTransaction } from "@/models/transactions"
 import { revalidatePath } from "next/cache"
 
 export async function createInvoiceAction(data: CreateInvoiceData) {
   const user = await getCurrentUser()
   const invoice = await createInvoice(user.id, data)
+
+  // Create linked income transaction for accounting purposes
+  const transaction = await createTransaction(user.id, {
+    name: invoice.invoiceNumber,
+    merchant: null,
+    total: invoice.total,
+    currencyCode: invoice.currency,
+    type: "income",
+    issuedAt: invoice.issuedAt,
+    categoryCode: "invoice",
+    customerId: invoice.customerId ?? null,
+  })
+
+  await prisma.invoice.update({
+    where: { id: invoice.id, userId: user.id },
+    data: { transactionId: transaction.id },
+  })
+
   revalidatePath("/invoices")
   return { success: true, data: invoice }
 }
@@ -48,24 +67,27 @@ export async function markInvoicePaidAction(id: string, paidAt: Date) {
   type InvoiceWithCustomer = Prisma.InvoiceGetPayload<{ include: { customer: true } }>
   const customer = (invoice as InvoiceWithCustomer).customer
 
-  // Create income transaction
-  const transaction = await createTransaction(user.id, {
-    name: `Invoice ${invoice.invoiceNumber} - ${customer?.name || "Unknown"}`,
-    total: invoice.total,
-    currencyCode: invoice.currency,
-    type: "income",
-    issuedAt: paidAt,
-    categoryCode: "invoice",
-    customerId: invoice.customerId,
-  })
+  let transactionId = invoice.transactionId
 
-  await updateInvoiceStatus(id, user.id, "paid", {
-    paidAt,
-    transactionId: transaction.id,
-  })
+  if (transactionId) {
+    // Reuse existing transaction — just update its date to actual payment date
+    await updateTransaction(transactionId, user.id, { issuedAt: paidAt })
+  } else {
+    // Fallback: invoice was created before linked-transaction logic
+    const transaction = await createTransaction(user.id, {
+      name: `Invoice ${invoice.invoiceNumber} - ${customer?.name || "Unknown"}`,
+      total: invoice.total,
+      currencyCode: invoice.currency,
+      type: "income",
+      issuedAt: paidAt,
+      categoryCode: "invoice",
+      customerId: invoice.customerId,
+    })
+    transactionId = transaction.id
+  }
 
-  // Update paidAmount to full total
-  const { prisma } = await import("@/lib/db")
+  await updateInvoiceStatus(id, user.id, "paid", { paidAt, transactionId })
+
   await prisma.invoice.update({
     where: { id, userId: user.id },
     data: { paidAmount: invoice.total },

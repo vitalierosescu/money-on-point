@@ -98,9 +98,9 @@ export default async function UnsortedPage() {
                 <Upload /> Upload New File
               </UploadButton>
               <Button variant="outline" asChild>
-                <Link href="/transactions">
+                <Link href="/invoices">
                   <FileText />
-                  Go to Transactions
+                  Go to Invoices
                 </Link>
               </Button>
             </div>

@@ -113,7 +113,7 @@ export async function saveInvoiceAsTransactionAction(
     // Update transaction with the file ID
     await updateTransactionFiles(transaction.id, user.id, [fileRecord.id])
 
-    revalidatePath("/transactions")
+    revalidatePath("/invoices")
 
     return { success: true, data: transaction }
   } catch (error) {

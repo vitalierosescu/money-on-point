@@ -66,7 +66,6 @@ export async function saveTransactionsAction(
     }
 
     revalidatePath("/import/csv")
-    revalidatePath("/transactions")
 
     return { success: true }
   } catch (error) {

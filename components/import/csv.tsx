@@ -40,7 +40,7 @@ export function ImportCSVTable({ fields }: { fields: Field[] }) {
 
   useEffect(() => {
     if (saveState?.success) {
-      router.push("/transactions")
+      router.push("/invoices")
     }
   }, [saveState, router])
 

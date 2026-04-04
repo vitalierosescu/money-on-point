@@ -22,7 +22,7 @@ export function BulkActionsMenu({ selectedIds, onActionComplete }: BulkActionsMe
       setIsLoading(true)
       const result = await bulkDeleteTransactionsAction(selectedIds)
       if (!result.success) {
-        throw new Error(result.error)
+        throw new Error(result.error ?? undefined)
       }
       onActionComplete?.()
     } catch (error) {

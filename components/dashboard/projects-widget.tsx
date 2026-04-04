@@ -16,7 +16,7 @@ export function ProjectsWidget({
   return (
     <div className="grid gap-4 md:grid-cols-2">
       {projects.map((project) => (
-        <Link key={project.code} href={`/transactions?projectCode=${project.code}`}>
+        <Link key={project.code} href={`/invoices?projectCode=${project.code}`}>
           <Card className="bg-gradient-to-tr from-white via-slate-50/40 to-purple-50/30 border-slate-200/60 hover:shadow-xl transition-all duration-500 hover:scale-[1.01] group cursor-pointer">
             <CardHeader className="group-hover:translate-y-[-2px] transition-transform duration-300">
               <CardTitle>

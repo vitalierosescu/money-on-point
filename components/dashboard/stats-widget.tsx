@@ -36,7 +36,7 @@ export async function StatsWidget({ filters }: { filters: TransactionFilters }) 
       {statsTimeSeries.length > 0 && <IncomeExpenseGraph data={statsTimeSeries} defaultCurrency={defaultCurrency} />}
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Link href="/transactions?type=income">
+        <Link href="/invoices">
           <Card className="bg-gradient-to-br from-white via-green-50/30 to-emerald-50/40 border-green-200/50 hover:shadow-lg transition-all duration-300 hover:scale-[1.02] cursor-pointer">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Income</CardTitle>
@@ -55,7 +55,7 @@ export async function StatsWidget({ filters }: { filters: TransactionFilters }) 
             </CardContent>
           </Card>
         </Link>
-        <Link href="/transactions?type=expense">
+        <Link href="/expenses">
           <Card className="bg-gradient-to-br from-white via-red-50/30 to-rose-50/40 border-red-200/50 hover:shadow-lg transition-all duration-300 hover:scale-[1.02] cursor-pointer">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Expenses</CardTitle>
@@ -71,7 +71,7 @@ export async function StatsWidget({ filters }: { filters: TransactionFilters }) 
             </CardContent>
           </Card>
         </Link>
-        <Link href="/transactions">
+        <Link href="/invoices">
           <Card className="bg-gradient-to-br from-white via-pink-50/30 to-indigo-50/40 border-pink-200/50 hover:shadow-lg transition-all duration-300 hover:scale-[1.02] cursor-pointer">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Net Profit</CardTitle>
@@ -92,10 +92,10 @@ export async function StatsWidget({ filters }: { filters: TransactionFilters }) 
             </CardContent>
           </Card>
         </Link>
-        <Link href="/transactions">
+        <Link href="/invoices">
           <Card className="bg-gradient-to-br from-white via-blue-50/30 to-indigo-50/40 border-blue-200/50 hover:shadow-lg transition-all duration-300 hover:scale-[1.02] cursor-pointer">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Processed Transactions</CardTitle>
+              <CardTitle className="text-sm font-medium">Processed Invoices</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.invoicesProcessed}</div>

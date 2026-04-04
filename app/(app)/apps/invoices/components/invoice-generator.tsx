@@ -6,7 +6,7 @@ import { CustomerPicker } from "@/components/customers/customer-picker"
 import { fetchAsBase64 } from "@/lib/utils"
 import { SettingsMap } from "@/models/settings"
 import { Currency, Customer, User } from "@/prisma/client"
-import { createInvoiceAction } from "@/app/(app)/invoices/actions"
+import { createInvoiceAction, updateInvoiceAction } from "@/app/(app)/invoices/actions"
 import { FileDown, Loader2, Save, TextSelect, X } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { startTransition, useMemo, useReducer, useState } from "react"
@@ -79,6 +79,9 @@ export function InvoiceGenerator({
   customers,
   nextInvoiceNumber,
   mode,
+  invoiceId,
+  initialCustomer,
+  initialFormData: initialFormDataProp,
 }: {
   user: User
   settings: SettingsMap
@@ -86,7 +89,10 @@ export function InvoiceGenerator({
   appData?: InvoiceAppData | null
   customers?: Customer[]
   nextInvoiceNumber?: string
-  mode?: "create"
+  mode?: "create" | "edit"
+  invoiceId?: string
+  initialCustomer?: Customer | null
+  initialFormData?: InvoiceFormData
 }) {
   const templates: InvoiceTemplate[] = useMemo(
     () => [...defaultTemplates(user, settings), ...(appData?.templates || [])],
@@ -94,6 +100,7 @@ export function InvoiceGenerator({
   )
 
   const initialFormData = useMemo(() => {
+    if (initialFormDataProp) return initialFormDataProp
     const base = templates[0].formData
     if (nextInvoiceNumber) {
       return { ...base, invoiceNumber: nextInvoiceNumber }
@@ -108,7 +115,7 @@ export function InvoiceGenerator({
   const [isPdfLoading, setIsPdfLoading] = useState(false)
   const [isSavingTransaction, setIsSavingTransaction] = useState(false)
   const [isSavingInvoice, setIsSavingInvoice] = useState(false)
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(initialCustomer ?? null)
 
   const router = useRouter()
 
@@ -263,6 +270,50 @@ export function InvoiceGenerator({
     }
   }
 
+  const handleUpdateInvoice = async (status: "draft" | "sent") => {
+    if (!selectedCustomer) {
+      alert("Please select a customer before saving.")
+      return
+    }
+    if (!invoiceId) return
+
+    setIsSavingInvoice(true)
+    try {
+      const subtotal = formData.items.reduce((sum, item) => sum + item.subtotal, 0)
+      const taxTotal = formData.additionalTaxes.reduce((sum, tax) => sum + tax.amount, 0)
+      const feeTotal = formData.additionalFees.reduce((sum, fee) => sum + fee.amount, 0)
+      const total = (formData.taxIncluded ? subtotal : subtotal + taxTotal) + feeTotal
+
+      const result = await updateInvoiceAction(invoiceId, {
+        customerId: selectedCustomer.id,
+        invoiceNumber: formData.invoiceNumber,
+        status,
+        issuedAt: new Date(formData.date),
+        dueDate: new Date(formData.dueDate),
+        currency: formData.currency,
+        subtotal: Math.round(subtotal * 100),
+        taxTotal: Math.round(taxTotal * 100),
+        total: Math.round(total * 100),
+        items: formData.items,
+        taxes: formData.additionalTaxes,
+        fees: formData.additionalFees,
+        notes: formData.notes || null,
+        templateData: formData,
+      })
+
+      if (result.success) {
+        window.location.href = `/invoices/${invoiceId}`
+      } else {
+        alert("Failed to update invoice. Please try again.")
+      }
+    } catch (error) {
+      console.error("Error updating invoice:", error)
+      alert("Failed to update invoice. Please try again.")
+    } finally {
+      setIsSavingInvoice(false)
+    }
+  }
+
   // Accept optional event, prevent default only if present
   const handleSaveAsTransaction = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
@@ -277,7 +328,7 @@ export function InvoiceGenerator({
       if (result.success && result.data?.id) {
         console.log("SUCCESS! REDIRECTING TO TRANSACTION", result.data?.id)
         startTransition(() => {
-          router.push(`/transactions/${result.data?.id}`)
+          router.push(`/invoices`)
         })
       } else {
         alert(result.error || "Failed to save as transaction")
@@ -322,8 +373,8 @@ export function InvoiceGenerator({
         </div>
       )}
 
-      {/* Customer Picker - only shown in create mode */}
-      {mode === "create" && customers && (
+      {/* Customer Picker - shown in create and edit mode */}
+      {(mode === "create" || mode === "edit") && customers && (
         <div className="max-w-md">
           <p className="text-sm font-medium mb-2">Customer</p>
           <CustomerPicker
@@ -394,6 +445,43 @@ export function InvoiceGenerator({
               </Button>
               <Button
                 onClick={() => handleSaveInvoice("sent")}
+                disabled={isSavingInvoice}
+              >
+                {isSavingInvoice ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="mr-2" />
+                    Save & Send
+                  </>
+                )}
+              </Button>
+            </>
+          )}
+          {mode === "edit" && (
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => handleUpdateInvoice("draft")}
+                disabled={isSavingInvoice}
+              >
+                {isSavingInvoice ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="mr-2" />
+                    Save as Draft
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={() => handleUpdateInvoice("sent")}
                 disabled={isSavingInvoice}
               >
                 {isSavingInvoice ? (

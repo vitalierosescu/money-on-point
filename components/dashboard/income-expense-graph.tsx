@@ -79,7 +79,7 @@ export function IncomeExpenseGraph({ data, defaultCurrency }: IncomeExpenseGraph
     })
 
     // Navigate to transactions page with filters
-    router.push(`/transactions?${params.toString()}`)
+    router.push(type === "income" ? `/invoices?${params.toString()}` : `/expenses?${params.toString()}`)
   }
 
   if (!data.length) {
