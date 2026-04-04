@@ -1,8 +1,13 @@
 import { InvoiceActions } from "@/components/invoices/invoice-actions"
+import { InvoicePreview } from "@/components/invoices/invoice-preview"
 import { InvoiceStatusBadge } from "@/components/invoices/invoice-status-badge"
+import { InvoiceFormData } from "@/app/(app)/apps/invoices/components/invoice-page"
+import { Button } from "@/components/ui/button"
 import { getCurrentUser } from "@/lib/auth"
 import { getInvoiceById } from "@/models/invoices"
+import { Pencil } from "lucide-react"
 import { Metadata } from "next"
+import Link from "next/link"
 import { notFound } from "next/navigation"
 import { Prisma } from "@/prisma/client"
 
@@ -26,17 +31,27 @@ export default async function InvoiceDetailPage({
   }>
 
   const payments = invoiceFull.payments || []
+  const templateData = invoice.templateData
+    ? (invoice.templateData as unknown as InvoiceFormData)
+    : null
 
   return (
     <div className="flex flex-col lg:flex-row gap-8 max-w-5xl">
-      {/* Left: PDF or placeholder */}
-      <div className="flex-1">
-        <div className="border rounded-lg p-8 text-center text-muted-foreground min-h-[600px] flex items-center justify-center">
-          <div>
+      {/* Left: Invoice preview */}
+      <div className="flex-1 border rounded-lg overflow-hidden">
+        {templateData ? (
+          <InvoicePreview templateData={templateData} />
+        ) : (
+          <div className="min-h-[600px] flex items-center justify-center text-muted-foreground flex-col gap-4">
             <p className="text-lg font-medium">Invoice {invoice.invoiceNumber}</p>
-            <p className="text-sm mt-2">PDF preview coming soon</p>
+            <Link href={`/invoices/${id}/edit`}>
+              <Button variant="outline">
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit &amp; Preview PDF
+              </Button>
+            </Link>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Right: Details & Actions */}
@@ -44,7 +59,14 @@ export default async function InvoiceDetailPage({
         {/* Header */}
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold">{invoice.invoiceNumber}</h2>
-          <InvoiceStatusBadge status={invoice.status} />
+          <div className="flex items-center gap-2">
+            <InvoiceStatusBadge status={invoice.status} />
+            <Link href={`/invoices/${id}/edit`}>
+              <Button variant="ghost" size="icon">
+                <Pencil className="h-4 w-4" />
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {/* Customer */}
