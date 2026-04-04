@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/sidebar"
 import { UserProfile } from "@/lib/auth"
 import config from "@/lib/config"
-import { ClockArrowUp, CreditCard, Gift, House, Import, LayoutDashboard, Receipt, Settings, Upload, Users } from "lucide-react"
+import { ArrowLeftRight, ClockArrowUp, CreditCard, Gift, House, Import, LayoutDashboard, Receipt, Settings, Upload, Users } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -113,6 +113,15 @@ export function AppSidebar({
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItemWithHighlight>
+                <SidebarMenuItemWithHighlight href="/transactions">
+                  <SidebarMenuButton asChild>
+                    <Link href="/transactions">
+                      <ArrowLeftRight />
+                      <span>Transactions</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItemWithHighlight>
+
                 <SidebarMenuItemWithHighlight href="/customers">
                   <SidebarMenuButton asChild>
                     <Link href="/customers">
