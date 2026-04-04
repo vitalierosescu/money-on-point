@@ -10,48 +10,46 @@ export type InvoiceFilters = {
   search?: string
 }
 
-export const getInvoices = cache(
-  async (userId: string, filters?: InvoiceFilters): Promise<Invoice[]> => {
-    const where: Prisma.InvoiceWhereInput = { userId }
+export const getInvoices = async (userId: string, filters?: InvoiceFilters): Promise<Invoice[]> => {
+  const where: Prisma.InvoiceWhereInput = { userId }
 
-    if (filters?.status) {
-      where.status = filters.status
-    }
-    if (filters?.customerId) {
-      where.customerId = filters.customerId
-    }
-    if (filters?.dateFrom || filters?.dateTo) {
-      where.issuedAt = {
-        gte: filters.dateFrom ? new Date(filters.dateFrom) : undefined,
-        lte: filters.dateTo ? new Date(filters.dateTo) : undefined,
-      }
-    }
-    if (filters?.search) {
-      where.OR = [
-        { invoiceNumber: { contains: filters.search, mode: "insensitive" } },
-        { customer: { name: { contains: filters.search, mode: "insensitive" } } },
-        { subject: { contains: filters.search, mode: "insensitive" } },
-      ]
-    }
-
-    // Auto-detect overdue invoices (update on read)
-    const now = new Date()
-    await prisma.invoice.updateMany({
-      where: {
-        userId,
-        status: { in: ["sent", "partially_paid"] },
-        dueDate: { lt: now },
-      },
-      data: { status: "overdue" },
-    })
-
-    return prisma.invoice.findMany({
-      where,
-      include: { customer: true, payments: true },
-      orderBy: { issuedAt: "desc" },
-    })
+  if (filters?.status) {
+    where.status = filters.status
   }
-)
+  if (filters?.customerId) {
+    where.customerId = filters.customerId
+  }
+  if (filters?.dateFrom || filters?.dateTo) {
+    where.issuedAt = {
+      gte: filters.dateFrom ? new Date(filters.dateFrom) : undefined,
+      lte: filters.dateTo ? new Date(filters.dateTo) : undefined,
+    }
+  }
+  if (filters?.search) {
+    where.OR = [
+      { invoiceNumber: { contains: filters.search, mode: "insensitive" } },
+      { customer: { name: { contains: filters.search, mode: "insensitive" } } },
+      { subject: { contains: filters.search, mode: "insensitive" } },
+    ]
+  }
+
+  // Auto-detect overdue invoices (update on read)
+  const now = new Date()
+  await prisma.invoice.updateMany({
+    where: {
+      userId,
+      status: { in: ["sent", "partially_paid"] },
+      dueDate: { lt: now },
+    },
+    data: { status: "overdue" },
+  })
+
+  return prisma.invoice.findMany({
+    where,
+    include: { customer: true, payments: true },
+    orderBy: { issuedAt: "desc" },
+  })
+}
 
 export const getInvoiceById = cache(
   async (id: string, userId: string): Promise<Invoice | null> => {

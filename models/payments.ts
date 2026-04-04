@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db"
-import { Payment } from "@/prisma/client"
-import { createTransaction } from "./transactions"
-import { updateInvoiceStatus } from "./invoices"
+import { Payment, Prisma } from "@/prisma/client"
+import { getFields } from "./fields"
+import { TransactionData } from "./transactions"
 
 export type RecordPaymentInput = {
   amount: number
@@ -19,60 +19,87 @@ export const recordPayment = async (
   userId: string,
   input: RecordPaymentInput
 ): Promise<RecordPaymentResult> => {
-  const invoice = await prisma.invoice.findFirst({
-    where: { id: invoiceId, userId },
-    include: { customer: true, payments: true },
-  })
+  // Pre-fetch fields outside the transaction (read-only, no atomicity needed)
+  const fields = await getFields(userId)
 
-  if (!invoice) {
-    throw new Error(`Invoice ${invoiceId} not found`)
-  }
-
-  const payment = await prisma.payment.create({
-    data: {
-      invoiceId,
-      amount: input.amount,
-      paidAt: input.paidAt,
-      note: input.note ?? null,
-    },
-  })
-
-  const allPayments = await prisma.payment.findMany({
-    where: { invoiceId },
-  })
-  const totalPaid = allPayments.reduce((sum, p) => sum + p.amount, 0)
-
-  const invoiceFullyPaid = totalPaid >= invoice.total
-
-  if (invoiceFullyPaid) {
-    const transaction = await createTransaction(userId, {
-      name: `Invoice ${invoice.invoiceNumber} - ${invoice.customer.name}`,
-      total: invoice.total,
-      currencyCode: invoice.currency,
-      type: "income",
-      issuedAt: input.paidAt,
-      categoryCode: "invoice",
-      customerId: invoice.customerId,
-    })
-
-    await updateInvoiceStatus(invoiceId, userId, "paid", {
-      paidAt: input.paidAt,
-      transactionId: transaction.id,
-    })
-
-    await prisma.invoice.update({
+  return prisma.$transaction(async (tx) => {
+    // Verify invoice ownership
+    const invoice = await tx.invoice.findFirst({
       where: { id: invoiceId, userId },
-      data: { paidAmount: totalPaid },
+      include: { customer: true },
     })
-  } else {
-    await prisma.invoice.update({
-      where: { id: invoiceId, userId },
+    if (!invoice) throw new Error(`Invoice ${invoiceId} not found`)
+
+    // Create payment
+    const payment = await tx.payment.create({
       data: {
-        status: "partially_paid",
-        paidAmount: totalPaid,
+        invoiceId,
+        amount: input.amount,
+        paidAt: input.paidAt,
+        note: input.note ?? null,
       },
     })
-  }
 
-  return { payment, invoiceFullyPaid }
+    // Sum all payments including the new one
+    const allPayments = await tx.payment.findMany({ where: { invoiceId } })
+    const totalPaid = allPayments.reduce((sum, p) => sum + p.amount, 0)
+    const invoiceFullyPaid = totalPaid >= invoice.total
+
+    if (invoiceFullyPaid) {
+      // Inline createTransaction logic using tx to keep everything atomic
+      const transactionData: TransactionData = {
+        name: `Invoice ${invoice.invoiceNumber} - ${invoice.customer.name}`,
+        total: invoice.total,
+        currencyCode: invoice.currency,
+        type: "income",
+        issuedAt: input.paidAt,
+        categoryCode: "invoice",
+        customerId: invoice.customerId,
+      }
+
+      // Split into standard vs extra fields (uses pre-fetched fieldMap)
+      const standard: TransactionData = {}
+      const extra: Record<string, unknown> = {}
+
+      Object.entries(transactionData).forEach(([key, value]) => {
+        const fieldDef = fields.find((f) => f.code === key)
+        if (fieldDef) {
+          if (fieldDef.isExtra) {
+            extra[key] = value
+          } else {
+            standard[key] = value
+          }
+        }
+      })
+
+      const transaction = await tx.transaction.create({
+        data: {
+          ...standard,
+          extra: extra as Prisma.InputJsonValue,
+          items: [] as unknown as Prisma.InputJsonValue,
+          userId,
+        },
+      })
+
+      await tx.invoice.update({
+        where: { id: invoiceId },
+        data: {
+          status: "paid",
+          paidAt: input.paidAt,
+          paidAmount: totalPaid,
+          transactionId: transaction.id,
+        },
+      })
+    } else {
+      await tx.invoice.update({
+        where: { id: invoiceId },
+        data: {
+          status: "partially_paid",
+          paidAmount: totalPaid,
+        },
+      })
+    }
+
+    return { payment, invoiceFullyPaid }
+  })
 }
