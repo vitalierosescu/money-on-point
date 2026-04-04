@@ -69,7 +69,7 @@ export const updateCustomer = async (
   data: CustomerData
 ): Promise<Customer> => {
   return prisma.customer.update({
-    where: { id },
+    where: { id, userId },
     data: {
       ...data,
       name: data.name ?? "",
@@ -83,7 +83,7 @@ export const deleteCustomer = async (
   userId: string
 ): Promise<Customer> => {
   return prisma.customer.delete({
-    where: { id },
+    where: { id, userId },
   })
 }
 
@@ -108,13 +108,13 @@ export const getCustomerStats = cache(async (userId: string) => {
     c.invoices.some((inv) => inv.issuedAt >= thirtyDaysAgo)
   )
 
-  const mostActive = activeCustomers.sort(
+  const mostActive = [...activeCustomers].sort(
     (a, b) =>
       b.invoices.filter((i) => i.issuedAt >= thirtyDaysAgo).length -
       a.invoices.filter((i) => i.issuedAt >= thirtyDaysAgo).length
   )[0]
 
-  const topRevenue = customers.sort(
+  const topRevenue = [...customers].sort(
     (a, b) =>
       b.invoices
         .filter((i) => i.issuedAt >= thirtyDaysAgo && i.status === "paid")
