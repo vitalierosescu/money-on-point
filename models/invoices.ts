@@ -2,6 +2,10 @@ import { prisma } from "@/lib/db"
 import { Invoice, Prisma } from "@/prisma/client"
 import { cache } from "react"
 
+export type InvoiceWithCustomer = Prisma.InvoiceGetPayload<{
+  include: { customer: true; payments: true }
+}>
+
 export type InvoiceFilters = {
   status?: string
   customerId?: string
@@ -10,7 +14,7 @@ export type InvoiceFilters = {
   search?: string
 }
 
-export const getInvoices = async (userId: string, filters?: InvoiceFilters): Promise<Invoice[]> => {
+export const getInvoices = async (userId: string, filters?: InvoiceFilters): Promise<InvoiceWithCustomer[]> => {
   const where: Prisma.InvoiceWhereInput = { userId }
 
   if (filters?.status) {
