@@ -1,7 +1,6 @@
 import { InvoiceStatusBadge } from "@/components/invoices/invoice-status-badge"
 import { getCurrentUser } from "@/lib/auth"
-import { prisma } from "@/lib/db"
-import { getCustomerById } from "@/models/customers"
+import { getCustomerById, getInvoicesByCustomer } from "@/models/customers"
 import { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
@@ -18,11 +17,7 @@ export default async function CustomerDetailPage({
   const customer = await getCustomerById(id, user.id)
   if (!customer) notFound()
 
-  const invoices = await prisma.invoice.findMany({
-    where: { customerId: id, userId: user.id },
-    orderBy: { issuedAt: "desc" },
-    take: 50,
-  })
+  const invoices = await getInvoicesByCustomer(id, user.id)
 
   return (
     <div className="max-w-4xl">

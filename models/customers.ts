@@ -78,6 +78,16 @@ export const updateCustomer = async (
   })
 }
 
+export const getInvoicesByCustomer = cache(
+  async (customerId: string, userId: string) => {
+    return prisma.invoice.findMany({
+      where: { customerId, userId },
+      orderBy: { issuedAt: "desc" },
+      take: 50,
+    })
+  }
+)
+
 export const deleteCustomer = async (
   id: string,
   userId: string

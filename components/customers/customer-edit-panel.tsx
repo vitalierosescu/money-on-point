@@ -20,10 +20,12 @@ export function CustomerEditPanel({ customer, trigger, onSuccess }: CustomerEdit
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [detailsOpen, setDetailsOpen] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setLoading(true)
+    setError(null)
 
     const form = e.currentTarget
     const fd = new FormData(form)
@@ -59,6 +61,8 @@ export function CustomerEditPanel({ customer, trigger, onSuccess }: CustomerEdit
       }
       setOpen(false)
       onSuccess?.()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong")
     } finally {
       setLoading(false)
     }
@@ -172,6 +176,8 @@ export function CustomerEditPanel({ customer, trigger, onSuccess }: CustomerEdit
               </div>
             </CollapsibleContent>
           </Collapsible>
+
+          {error && <p className="text-sm text-destructive">{error}</p>}
 
           <div className="flex justify-end gap-2 pt-4">
             <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={loading}>
