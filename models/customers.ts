@@ -3,7 +3,7 @@ import { Customer, Prisma } from "@/prisma/client"
 import { cache } from "react"
 
 export type CustomerData = {
-  name: string
+  name?: string | null
   email?: string | null
   billingEmails?: string[] | null
   phone?: string | null
@@ -56,6 +56,7 @@ export const createCustomer = async (
   return prisma.customer.create({
     data: {
       ...data,
+      name: data.name ?? "",
       billingEmails: data.billingEmails ?? [],
       userId,
     },
@@ -71,6 +72,7 @@ export const updateCustomer = async (
     where: { id },
     data: {
       ...data,
+      name: data.name ?? "",
       billingEmails: data.billingEmails ?? [],
     },
   })
