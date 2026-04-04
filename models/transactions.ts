@@ -22,6 +22,9 @@ export type TransactionData = {
   issuedAt?: Date | string | null
   text?: string | null
   customerId?: string | null
+  status?: string | null
+  dueDate?: Date | string | null
+  linkedExpenseId?: string | null
   [key: string]: unknown
 }
 
@@ -116,6 +119,59 @@ export const getTransactions = cache(
     }
   }
 )
+
+export const getExpenses = async (
+  userId: string,
+  filters?: { status?: string; search?: string; dateFrom?: string; dateTo?: string }
+): Promise<Transaction[]> => {
+  // Auto-detect overdue: same pattern as getInvoices
+  const now = new Date()
+  await prisma.transaction.updateMany({
+    where: {
+      userId,
+      type: "expense",
+      status: { in: ["unpaid", "to_pay"] },
+      dueDate: { lt: now },
+    },
+    data: { status: "overdue" },
+  })
+
+  const where: Prisma.TransactionWhereInput = { userId, type: "expense" }
+
+  if (filters?.status && filters.status !== "all") {
+    where.status = filters.status
+  }
+  if (filters?.search) {
+    where.OR = [
+      { merchant: { contains: filters.search, mode: "insensitive" } },
+      { name: { contains: filters.search, mode: "insensitive" } },
+      { description: { contains: filters.search, mode: "insensitive" } },
+    ]
+  }
+  if (filters?.dateFrom || filters?.dateTo) {
+    where.issuedAt = {
+      gte: filters?.dateFrom ? new Date(filters.dateFrom) : undefined,
+      lte: filters?.dateTo ? new Date(filters.dateTo) : undefined,
+    }
+  }
+
+  return prisma.transaction.findMany({
+    where,
+    include: { category: true },
+    orderBy: { issuedAt: "desc" },
+  })
+}
+
+export const updateExpenseStatus = async (
+  id: string,
+  userId: string,
+  status: "unpaid" | "to_pay" | "paid"
+): Promise<Transaction> => {
+  return prisma.transaction.update({
+    where: { id, userId },
+    data: { status },
+  })
+}
 
 export const getTransactionById = cache(async (id: string, userId: string): Promise<Transaction | null> => {
   return await prisma.transaction.findUnique({
