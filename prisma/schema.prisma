@@ -196,6 +196,11 @@ model Transaction {
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @updatedAt @map("updated_at")
   text                  String?
+  status          String?   @map("status")
+  dueDate         DateTime? @map("due_date")
+  linkedExpenseId String?   @map("linked_expense_id") @db.Uuid
+  linkedExpense   Transaction?  @relation("CreditNote", fields: [linkedExpenseId], references: [id], onDelete: SetNull)
+  creditNotes     Transaction[] @relation("CreditNote")
 
   @@index([userId])
   @@index([projectCode])
