@@ -6,11 +6,7 @@ import { InvoiceStatusBadge } from "@/components/invoices/invoice-status-badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Prisma } from "@/prisma/client"
-
-type InvoiceWithCustomer = Prisma.InvoiceGetPayload<{
-  include: { customer: true; payments: true }
-}>
+import { InvoiceWithCustomer } from "@/models/invoices"
 
 type CustomerForFilter = { id: string; name: string }
 
