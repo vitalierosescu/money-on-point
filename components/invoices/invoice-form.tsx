@@ -99,6 +99,17 @@ export function InvoiceForm({ customers, currencies, nextInvoiceNumber, settings
     }
     setIsSaving(true)
     try {
+      const billTo = selectedCustomer ? [
+        selectedCustomer.name,
+        selectedCustomer.street && selectedCustomer.houseNumber
+          ? `${selectedCustomer.street} ${selectedCustomer.houseNumber}${selectedCustomer.bus ? ` ${selectedCustomer.bus}` : ""}`
+          : "",
+        selectedCustomer.zipCode && selectedCustomer.city
+          ? `${selectedCustomer.zipCode} ${selectedCustomer.city}`
+          : "",
+        selectedCustomer.country || "",
+        selectedCustomer.vatNumber ? `BTW: ${selectedCustomer.vatNumber}` : "",
+      ].filter(Boolean).join("\n") : ""
       const result = await createInvoiceAction({
         customerId: selectedCustomer.id,
         invoiceNumber,
@@ -116,6 +127,7 @@ export function InvoiceForm({ customers, currencies, nextInvoiceNumber, settings
         notes: notes || null,
         paymentTerms: null,
         isVatReversed,
+        templateData: { billTo },
       })
       if (result.success) {
         window.location.href = `/invoices/${result.data.id}`
