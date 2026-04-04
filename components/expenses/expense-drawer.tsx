@@ -14,9 +14,10 @@ import {
   markExpenseUnpaidAction,
   updateExpenseAction,
   duplicateExpenseAction,
+  createCreditNoteAction,
   deleteExpenseAction,
 } from "@/app/(app)/expenses/actions"
-import { Loader2, Pencil, Copy, CreditCard, Trash2, Download, CheckCircle } from "lucide-react"
+import { Loader2, Pencil, Copy, CreditCard, Trash2, Download, CheckCircle, FileX } from "lucide-react"
 
 type ExpenseDrawerProps = {
   expense: Transaction & { category?: Category | null }
@@ -238,6 +239,15 @@ export function ExpenseDrawer({ expense, open, onClose, categories }: ExpenseDra
                   >
                     <Copy className="mr-2 h-4 w-4" />
                     Dupliceren
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => run(() => createCreditNoteAction(expense.id))}
+                    disabled={isPending}
+                  >
+                    <FileX className="mr-2 h-4 w-4" />
+                    Creditnota aanmaken
                   </Button>
                   <Button
                     variant="outline"

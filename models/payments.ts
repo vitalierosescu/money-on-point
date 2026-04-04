@@ -46,40 +46,51 @@ export const recordPayment = async (
     const invoiceFullyPaid = totalPaid >= invoice.total
 
     if (invoiceFullyPaid) {
-      // Inline createTransaction logic using tx to keep everything atomic
-      const transactionData: TransactionData = {
-        name: `Invoice ${invoice.invoiceNumber} - ${invoice.customer.name}`,
-        total: invoice.total,
-        currencyCode: invoice.currency,
-        type: "income",
-        issuedAt: input.paidAt,
-        categoryCode: "invoice",
-        customerId: invoice.customerId,
-      }
+      let transactionId = invoice.transactionId
 
-      // Split into standard vs extra fields (uses pre-fetched fieldMap)
-      const standard: TransactionData = {}
-      const extra: Record<string, unknown> = {}
-
-      Object.entries(transactionData).forEach(([key, value]) => {
-        const fieldDef = fields.find((f) => f.code === key)
-        if (fieldDef) {
-          if (fieldDef.isExtra) {
-            extra[key] = value
-          } else {
-            standard[key] = value
-          }
+      if (transactionId) {
+        // Reuse the transaction created at invoice-creation time; update its date
+        await tx.transaction.update({
+          where: { id: transactionId },
+          data: { issuedAt: input.paidAt },
+        })
+      } else {
+        // Fallback for invoices created before linked-transaction logic
+        const transactionData: TransactionData = {
+          name: `Invoice ${invoice.invoiceNumber} - ${invoice.customer.name}`,
+          total: invoice.total,
+          currencyCode: invoice.currency,
+          type: "income",
+          issuedAt: input.paidAt,
+          categoryCode: "invoice",
+          customerId: invoice.customerId,
         }
-      })
 
-      const transaction = await tx.transaction.create({
-        data: {
-          ...standard,
-          extra: extra as Prisma.InputJsonValue,
-          items: [] as unknown as Prisma.InputJsonValue,
-          userId,
-        },
-      })
+        const standard: TransactionData = {}
+        const extra: Record<string, unknown> = {}
+
+        Object.entries(transactionData).forEach(([key, value]) => {
+          const fieldDef = fields.find((f) => f.code === key)
+          if (fieldDef) {
+            if (fieldDef.isExtra) {
+              extra[key] = value
+            } else {
+              standard[key] = value
+            }
+          }
+        })
+
+        const transaction = await tx.transaction.create({
+          data: {
+            ...standard,
+            extra: extra as Prisma.InputJsonValue,
+            items: [] as unknown as Prisma.InputJsonValue,
+            userId,
+          },
+        })
+
+        transactionId = transaction.id
+      }
 
       await tx.invoice.update({
         where: { id: invoiceId },
@@ -87,7 +98,7 @@ export const recordPayment = async (
           status: "paid",
           paidAt: input.paidAt,
           paidAmount: totalPaid,
-          transactionId: transaction.id,
+          transactionId,
         },
       })
     } else {
