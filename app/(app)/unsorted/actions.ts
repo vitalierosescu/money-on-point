@@ -96,8 +96,15 @@ export async function saveFileAsTransactionAction(
     const file = await getFileById(fileId, user.id)
     if (!file) throw new Error("File not found")
 
-    // Create transaction
-    const transaction = await createTransaction(user.id, validatedForm.data)
+    // Create transaction with auto-set status for expenses
+    const transactionData = {
+      ...validatedForm.data,
+      // Auto-set status for expenses; income stays null
+      ...((!validatedForm.data.type || validatedForm.data.type === "expense")
+        ? { status: "unpaid" }
+        : {}),
+    }
+    const transaction = await createTransaction(user.id, transactionData)
 
     // Move file to processed location
     const userUploadsDirectory = getUserUploadsDirectory(user)
@@ -119,6 +126,7 @@ export async function saveFileAsTransactionAction(
     await updateTransactionFiles(transaction.id, user.id, [file.id])
 
     revalidatePath("/unsorted")
+    revalidatePath("/expenses")
 
     return { success: true, data: transaction }
   } catch (error) {
