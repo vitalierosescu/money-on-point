@@ -92,10 +92,9 @@ export function AppSidebar({
                     <Link href="/expenses">
                       <CreditCard />
                       <span>Expenses</span>
-                      {notification && notification.code === "sidebar.transactions" && notification.message && (
+                      {notification && notification.code === "sidebar.expenses" && notification.message && (
                         <Blinker />
                       )}
-                      <span></span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItemWithHighlight>
@@ -111,7 +110,6 @@ export function AppSidebar({
                         </span>
                       )}
                       {notification && notification.code === "sidebar.unsorted" && notification.message && <Blinker />}
-                      <span></span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItemWithHighlight>
