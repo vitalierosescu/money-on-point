@@ -1,7 +1,6 @@
 import { InvoiceList } from "@/components/invoices/invoice-list"
 import { Button } from "@/components/ui/button"
 import { getCurrentUser } from "@/lib/auth"
-import { getCustomers } from "@/models/customers"
 import { getInvoices, InvoiceFilters } from "@/models/invoices"
 import { Plus } from "lucide-react"
 import { Metadata } from "next"
@@ -20,7 +19,6 @@ export default async function InvoicesPage({
   const filters = await searchParams
   const user = await getCurrentUser()
   const invoices = await getInvoices(user.id, filters)
-  const customers = await getCustomers(user.id)
 
   return (
     <>
@@ -38,7 +36,7 @@ export default async function InvoicesPage({
         </Link>
       </header>
 
-      <InvoiceList invoices={invoices} customers={customers} />
+      <InvoiceList invoices={invoices} />
     </>
   )
 }
