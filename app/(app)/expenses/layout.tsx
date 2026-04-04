@@ -1,3 +1,3 @@
 export default function ExpensesLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>
+  return <div className="flex flex-col gap-4 p-4">{children}</div>
 }
