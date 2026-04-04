@@ -13,31 +13,59 @@ export type DashboardStats = {
 
 export const getDashboardStats = cache(
   async (userId: string, filters: TransactionFilters = {}): Promise<DashboardStats> => {
-    const where: Prisma.TransactionWhereInput = {}
+    const dateFilter =
+      filters.dateFrom || filters.dateTo
+        ? {
+            gte: filters.dateFrom ? new Date(filters.dateFrom) : undefined,
+            lte: filters.dateTo ? new Date(filters.dateTo) : undefined,
+          }
+        : undefined
 
-    if (filters.dateFrom || filters.dateTo) {
-      where.issuedAt = {
-        gte: filters.dateFrom ? new Date(filters.dateFrom) : undefined,
-        lte: filters.dateTo ? new Date(filters.dateTo) : undefined,
-      }
+    // Income: from paid Invoice records
+    const paidInvoices = await prisma.invoice.findMany({
+      where: {
+        userId,
+        status: "paid",
+        ...(dateFilter ? { paidAt: dateFilter } : {}),
+      },
+    })
+
+    // Expenses: from paid expense Transactions
+    const paidExpenses = await prisma.transaction.findMany({
+      where: {
+        userId,
+        type: "expense",
+        status: "paid",
+        ...(dateFilter ? { issuedAt: dateFilter } : {}),
+      },
+    })
+
+    // Build per-currency totals for income
+    const totalIncomePerCurrency: Record<string, number> = {}
+    for (const inv of paidInvoices) {
+      const c = inv.currency
+      totalIncomePerCurrency[c] = (totalIncomePerCurrency[c] ?? 0) + inv.total
     }
 
-    const transactions = await prisma.transaction.findMany({ where: { ...where, userId } })
-    const totalIncomePerCurrency = calcTotalPerCurrency(transactions.filter((t) => t.type === "income"))
-    const totalExpensesPerCurrency = calcTotalPerCurrency(transactions.filter((t) => t.type === "expense"))
+    // Build per-currency totals for expenses
+    const totalExpensesPerCurrency: Record<string, number> = {}
+    for (const exp of paidExpenses) {
+      const c = exp.currencyCode ?? "EUR"
+      totalExpensesPerCurrency[c] = (totalExpensesPerCurrency[c] ?? 0) + (exp.total ?? 0)
+    }
+
     const profitPerCurrency = Object.fromEntries(
       Object.keys(totalIncomePerCurrency).map((currency) => [
         currency,
-        totalIncomePerCurrency[currency] - totalExpensesPerCurrency[currency],
+        (totalIncomePerCurrency[currency] ?? 0) - (totalExpensesPerCurrency[currency] ?? 0),
       ])
     )
-    const invoicesProcessed = transactions.length
 
     return {
       totalIncomePerCurrency,
       totalExpensesPerCurrency,
       profitPerCurrency,
-      invoicesProcessed,
+      invoicesProcessed: paidInvoices.length,
     }
   }
 )
