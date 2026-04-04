@@ -10,7 +10,7 @@ import { createCustomerAction } from "@/app/(app)/customers/actions"
 type CustomerPickerProps = {
   customers: Customer[]
   selectedCustomer: Customer | null
-  onSelect: (customer: Customer) => void
+  onSelect: (customer: Customer | null) => void
 }
 
 export function CustomerPicker({ customers, selectedCustomer, onSelect }: CustomerPickerProps) {
@@ -66,7 +66,7 @@ export function CustomerPicker({ customers, selectedCustomer, onSelect }: Custom
             <p className="text-sm text-muted-foreground">{selectedCustomer.email}</p>
           )}
         </div>
-        <Button variant="outline" size="sm" onClick={() => onSelect(null as unknown as Customer)}>
+        <Button variant="outline" size="sm" onClick={() => onSelect(null)}>
           Change
         </Button>
       </div>

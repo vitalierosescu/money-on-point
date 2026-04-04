@@ -1,6 +1,7 @@
 "use server"
 
 import { getCurrentUser } from "@/lib/auth"
+import { Prisma } from "@/prisma/client"
 import {
   createInvoice,
   updateInvoice,
@@ -44,7 +45,8 @@ export async function markInvoicePaidAction(id: string, paidAt: Date) {
   const invoice = await getInvoiceById(id, user.id)
   if (!invoice) return { success: false, error: "Invoice not found" }
 
-  const customer = (invoice as any).customer
+  type InvoiceWithCustomer = Prisma.InvoiceGetPayload<{ include: { customer: true } }>
+  const customer = (invoice as InvoiceWithCustomer).customer
 
   // Create income transaction
   const transaction = await createTransaction(user.id, {
@@ -65,7 +67,7 @@ export async function markInvoicePaidAction(id: string, paidAt: Date) {
   // Update paidAmount to full total
   const { prisma } = await import("@/lib/db")
   await prisma.invoice.update({
-    where: { id },
+    where: { id, userId: user.id },
     data: { paidAmount: invoice.total },
   })
 
