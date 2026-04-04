@@ -1,4 +1,4 @@
-import { InvoiceForm } from "@/components/invoices/invoice-form"
+import { InvoiceGenerator } from "@/app/(app)/apps/invoices/components/invoice-generator"
 import { getCurrentUser } from "@/lib/auth"
 import { getCustomers } from "@/models/customers"
 import { getCurrencies } from "@/models/currencies"
@@ -21,16 +21,14 @@ export default async function NewInvoicePage() {
   ])
 
   return (
-    <div className="max-w-4xl">
-      <header className="mb-8">
-        <h2 className="text-3xl font-bold tracking-tight">New Invoice</h2>
-      </header>
-      <InvoiceForm
+    <div className="w-full">
+      <InvoiceGenerator
         customers={customers}
         currencies={currencies}
         nextInvoiceNumber={nextNumber}
         settings={settings}
         user={user}
+        mode="create"
       />
     </div>
   )
