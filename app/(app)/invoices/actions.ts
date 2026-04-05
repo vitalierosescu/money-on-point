@@ -2,27 +2,81 @@
 
 import { getCurrentUser } from "@/lib/auth"
 import { prisma } from "@/lib/db"
-import { Prisma } from "@/prisma/client"
 import {
+  getInvoiceDeliveryMethod,
+  normalizeCountryCode,
+  normalizeInvoiceDeliveryMethod,
+} from "@/lib/invoice-delivery"
+import {
+  validateInvoiceForPeppolDelivery,
+  validateInvoiceForSending,
+  type InvoiceFieldErrors,
+} from "@/lib/invoice-validation"
+import { isAuthorRightsMode } from "@/lib/author-rights"
+import { generateInvoicePDF } from "@/lib/invoice-pdf/generate"
+import { InvoiceTemplate } from "@/lib/invoice-pdf/templates"
+import type { InvoiceFormData } from "@/lib/invoice-pdf/types"
+import { sendInvoiceViaRecommand, verifyPeppolRecipient } from "@/lib/recommand"
+import config from "@/lib/config"
+import {
+  getDirectorySize,
+  getUserUploadsDirectory,
+  isEnoughStorageToUploadFile,
+  safePathJoin,
+  unsortedFilePath,
+} from "@/lib/files"
+import { getAppData, setAppData } from "@/models/apps"
+import { createFile, updateFile } from "@/models/files"
+import {
+  CreateInvoiceData,
   createInvoice,
-  updateInvoice,
-  updateInvoiceStatus,
   deleteInvoice,
   getInvoiceById,
-  CreateInvoiceData,
+  getNextInvoiceNumber,
+  updateInvoice,
+  updateInvoiceStatus,
 } from "@/models/invoices"
 import { recordPayment } from "@/models/payments"
+import { getSettings } from "@/models/settings"
 import { createTransaction, updateTransaction } from "@/models/transactions"
-import { revalidatePath } from "next/cache"
-import { Resend } from "resend"
-import React from "react"
-import { generateInvoicePDF } from "@/app/(app)/apps/invoices/actions"
 import { InvoiceEmail } from "@/components/emails/invoice-email"
-import type { InvoiceFormData } from "@/app/(app)/apps/invoices/components/invoice-page"
-import config from "@/lib/config"
+import { Prisma, User } from "@/prisma/client"
+import { revalidatePath } from "next/cache"
+import { randomUUID } from "crypto"
+import { mkdir, writeFile } from "fs/promises"
+import path from "path"
+import React from "react"
+import { Resend } from "resend"
 
-export async function createInvoiceAction(data: CreateInvoiceData) {
+type InvoiceAppData = {
+  templates: InvoiceTemplate[]
+}
+
+type InvoiceActionResult<T = unknown> =
+  | { success: true; data?: T }
+  | { success: false; error: string; fieldErrors?: InvoiceFieldErrors }
+
+export async function addNewTemplateAction(user: User, template: InvoiceTemplate) {
+  const appData = (await getAppData(user, "invoices")) as InvoiceAppData | null
+  const updatedTemplates = [...(appData?.templates || []), template]
+  const appDataResult = await setAppData(user, "invoices", { ...appData, templates: updatedTemplates })
+  return { success: true, data: appDataResult }
+}
+
+export async function deleteTemplateAction(user: User, templateId: string) {
+  const appData = (await getAppData(user, "invoices")) as InvoiceAppData | null
+  if (!appData) return { success: false, error: "No app data found" }
+
+  const updatedTemplates = appData.templates.filter((t) => t.id !== templateId)
+  const appDataResult = await setAppData(user, "invoices", { ...appData, templates: updatedTemplates })
+  return { success: true, data: appDataResult }
+}
+
+export async function createInvoiceAction(data: CreateInvoiceData): Promise<InvoiceActionResult<{ id: string }>> {
   const user = await getCurrentUser()
+  const validation = await validateInvoiceDraftOrSent(user.id, user, data)
+  if (!validation.success) return validation
+
   const invoice = await createInvoice(user.id, data)
 
   // Create linked income transaction for accounting purposes
@@ -43,22 +97,92 @@ export async function createInvoiceAction(data: CreateInvoiceData) {
   })
 
   revalidatePath("/invoices")
-  return { success: true, data: invoice }
+  return { success: true, data: { id: invoice.id } }
 }
 
-export async function updateInvoiceAction(
-  id: string,
-  data: Partial<CreateInvoiceData>
-) {
+export async function updateInvoiceAction(id: string, data: Partial<CreateInvoiceData>): Promise<InvoiceActionResult<{ id: string }>> {
   const user = await getCurrentUser()
+  const existing = await prisma.invoice.findFirst({
+    where: { id, userId: user.id },
+    include: { customer: true },
+  })
+
+  if (!existing) {
+    return { success: false, error: "Invoice not found" }
+  }
+
+  if (existing.status !== "draft") {
+    return { success: false, error: "Only draft invoices can be edited." }
+  }
+
+  const mergedData: CreateInvoiceData = {
+    customerId: data.customerId ?? existing.customerId,
+    invoiceNumber: data.invoiceNumber ?? existing.invoiceNumber,
+    status: data.status ?? existing.status,
+    issuedAt: data.issuedAt ?? existing.issuedAt,
+    dueDate: data.dueDate ?? existing.dueDate,
+    currency: data.currency ?? existing.currency,
+    subtotal: data.subtotal ?? existing.subtotal,
+    taxTotal: data.taxTotal ?? existing.taxTotal,
+    total: data.total ?? existing.total,
+    items: data.items ?? existing.items,
+    taxes: data.taxes ?? existing.taxes ?? undefined,
+    fees: data.fees ?? existing.fees ?? undefined,
+    paymentReference: data.paymentReference ?? existing.paymentReference ?? null,
+    poNumber: data.poNumber ?? existing.poNumber ?? null,
+    subject: data.subject ?? existing.subject ?? null,
+    notes: data.notes ?? existing.notes ?? null,
+    paymentTerms: data.paymentTerms ?? existing.paymentTerms ?? null,
+    invoiceMode: data.invoiceMode ?? existing.invoiceMode,
+    authorRightsData: data.authorRightsData ?? (existing.authorRightsData as Prisma.InputJsonValue | undefined),
+    isVatReversed: data.isVatReversed ?? existing.isVatReversed,
+    deliveryMethod: data.deliveryMethod ?? existing.deliveryMethod,
+    deliveryStatus: data.deliveryStatus ?? existing.deliveryStatus,
+    deliverySentAt: data.deliverySentAt ?? existing.deliverySentAt,
+    providerReferenceId: data.providerReferenceId ?? existing.providerReferenceId,
+    providerError: data.providerError ?? existing.providerError,
+    templateData: data.templateData ?? (existing.templateData as Prisma.InputJsonValue),
+    pdfPath: data.pdfPath ?? existing.pdfPath ?? null,
+  }
+
+  const validation = await validateInvoiceDraftOrSent(user.id, user, mergedData)
+  if (!validation.success) return validation
+
   const invoice = await updateInvoice(id, user.id, data)
   revalidatePath("/invoices")
   revalidatePath(`/invoices/${id}`)
-  return { success: true, data: invoice }
+  return { success: true, data: { id: invoice.id } }
 }
 
-export async function markInvoiceSentAction(id: string) {
+export async function markInvoiceSentAction(id: string): Promise<InvoiceActionResult> {
   const user = await getCurrentUser()
+  const invoice = await prisma.invoice.findFirst({
+    where: { id, userId: user.id },
+    include: { customer: true },
+  })
+
+  if (!invoice) return { success: false, error: "Invoice not found" }
+  if (invoice.status !== "draft") {
+    return { success: false, error: "Only draft invoices can be marked as sent." }
+  }
+
+  const templateData = invoice.templateData as InvoiceFormData | null
+  const validation = validateInvoiceForSending({
+    businessName: user.businessName,
+    businessAddress: user.businessAddress,
+    businessBankDetails: user.businessBankDetails,
+    customer: invoice.customer,
+    invoiceNumber: invoice.invoiceNumber,
+    issuedAt: invoice.issuedAt,
+    dueDate: invoice.dueDate,
+    currency: invoice.currency,
+    items: invoice.items,
+    templateData,
+  })
+  if (validation.message) {
+    return { success: false, error: validation.message, fieldErrors: validation.fieldErrors }
+  }
+
   await updateInvoiceStatus(id, user.id, "sent")
   revalidatePath("/invoices")
   revalidatePath(`/invoices/${id}`)
@@ -69,6 +193,9 @@ export async function markInvoicePaidAction(id: string, paidAt: Date) {
   const user = await getCurrentUser()
   const invoice = await getInvoiceById(id, user.id)
   if (!invoice) return { success: false, error: "Invoice not found" }
+  if (!["sent", "overdue", "partially_paid"].includes(invoice.status)) {
+    return { success: false, error: "Only sent invoices can be marked as paid." }
+  }
 
   type InvoiceWithCustomer = Prisma.InvoiceGetPayload<{ include: { customer: true } }>
   const customer = (invoice as InvoiceWithCustomer).customer
@@ -121,6 +248,11 @@ export async function recordPaymentAction(
 
 export async function cancelInvoiceAction(id: string) {
   const user = await getCurrentUser()
+  const invoice = await getInvoiceById(id, user.id)
+  if (!invoice) return { success: false, error: "Invoice not found" }
+  if (!["sent", "overdue", "partially_paid"].includes(invoice.status)) {
+    return { success: false, error: "Only sent invoices can be cancelled." }
+  }
   await updateInvoiceStatus(id, user.id, "cancelled")
   revalidatePath("/invoices")
   revalidatePath(`/invoices/${id}`)
@@ -129,41 +261,78 @@ export async function cancelInvoiceAction(id: string) {
 
 export async function deleteInvoiceAction(id: string) {
   const user = await getCurrentUser()
+  const invoice = await getInvoiceById(id, user.id)
+  if (!invoice) return { success: false, error: "Invoice not found" }
+  if (!["draft", "cancelled"].includes(invoice.status)) {
+    return { success: false, error: "Only draft or cancelled invoices can be deleted." }
+  }
   await deleteInvoice(id, user.id)
   revalidatePath("/invoices")
   return { success: true }
 }
 
-export async function sendInvoiceEmailAction(invoiceId: string, recipientEmail: string) {
+export async function sendInvoiceEmailAction(invoiceId: string, recipientEmail: string): Promise<InvoiceActionResult> {
   const user = await getCurrentUser()
 
-  const invoice = await prisma.invoice.findUnique({
+  const invoice = await prisma.invoice.findFirst({
     where: { id: invoiceId, userId: user.id },
+    include: { customer: true },
   })
 
-  if (!invoice) throw new Error("Invoice not found")
-  if (!invoice.templateData) throw new Error("Invoice has no template data — open and save the invoice first")
+  if (!invoice) {
+    return { success: false, error: "Invoice not found" }
+  }
+  if (!["draft", "sent", "overdue", "partially_paid"].includes(invoice.status)) {
+    return { success: false, error: "This invoice can no longer be sent." }
+  }
+  if (getInvoiceDeliveryMethod(invoice) !== "email_pdf") {
+    return { success: false, error: "Switch this invoice to Email + PDF before sending it by email." }
+  }
+  if (!invoice.templateData) {
+    return { success: false, error: "Invoice has no template data — open and save the invoice first" }
+  }
 
   const templateData = invoice.templateData as unknown as InvoiceFormData
+  const validation = validateInvoiceForSending({
+    businessName: user.businessName,
+    businessAddress: user.businessAddress,
+    businessBankDetails: user.businessBankDetails,
+    customer: invoice.customer,
+    invoiceNumber: invoice.invoiceNumber,
+    issuedAt: invoice.issuedAt,
+    dueDate: invoice.dueDate,
+    currency: invoice.currency,
+    items: invoice.items,
+    templateData,
+    recipientEmail,
+  })
+
+  if (validation.message) {
+    return { success: false, error: validation.message, fieldErrors: validation.fieldErrors }
+  }
 
   // Generate PDF from stored templateData
   const pdfBuffer = await generateInvoicePDF(templateData)
   const pdfBase64 = Buffer.from(pdfBuffer).toString("base64")
 
   // Format display values for the email
-  const total = new Intl.NumberFormat("nl-BE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(invoice.total / 100)
+  const total = new Intl.NumberFormat("nl-BE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
+    invoice.total / 100
+  )
   const dueDate = invoice.dueDate
-    ? new Intl.DateTimeFormat("nl-BE", { day: "numeric", month: "long", year: "numeric" }).format(new Date(invoice.dueDate))
+    ? new Intl.DateTimeFormat("nl-BE", { day: "numeric", month: "long", year: "numeric" }).format(
+        new Date(invoice.dueDate)
+      )
     : "–"
-  const businessName = user.name ?? "TaxHacker"
+  const businessName = user.businessName ?? user.name ?? "TaxHacker"
   const bankDetails = templateData.bankDetails ?? undefined
 
   const resend = new Resend(config.email.apiKey)
 
   const { error } = await resend.emails.send({
-    from: `${businessName} <${config.email.from}>`,
+    from: config.email.from,
     to: recipientEmail,
-    replyTo: user.email,
+    replyTo: config.email.from,
     subject: `Factuur ${invoice.invoiceNumber} — ${businessName}`,
     react: React.createElement(InvoiceEmail, {
       businessName,
@@ -182,14 +351,580 @@ export async function sendInvoiceEmailAction(invoiceId: string, recipientEmail: 
     ],
   })
 
-  if (error) throw new Error(`Email sending failed: ${String(error)}`)
+  if (error) {
+    return { success: false, error: `Email sending failed: ${error.message || JSON.stringify(error)}` }
+  }
 
   await prisma.invoice.update({
     where: { id: invoiceId, userId: user.id },
-    data: { status: "sent" },
+    data: {
+      status: "sent",
+      deliveryMethod: "email_pdf",
+      deliveryStatus: "sent",
+      deliverySentAt: new Date(),
+      providerReferenceId: null,
+      providerError: null,
+    },
   })
 
   revalidatePath(`/invoices/${invoiceId}`)
   revalidatePath("/invoices")
   return { success: true }
+}
+
+export async function setInvoiceDeliveryMethodAction(
+  invoiceId: string,
+  deliveryMethod: string
+): Promise<InvoiceActionResult> {
+  const user = await getCurrentUser()
+  const normalizedMethod = normalizeInvoiceDeliveryMethod(deliveryMethod)
+
+  if (!normalizedMethod) {
+    return { success: false, error: "Unknown delivery method." }
+  }
+
+  const invoice = await prisma.invoice.findFirst({
+    where: { id: invoiceId, userId: user.id },
+  })
+
+  if (!invoice) {
+    return { success: false, error: "Invoice not found" }
+  }
+
+  if (normalizedMethod === "peppol" && isAuthorRightsMode(invoice.invoiceMode)) {
+    return { success: false, error: "Author-rights invoices are currently supported with Email + PDF only." }
+  }
+
+  if (invoice.deliveryStatus === "sent") {
+    return { success: false, error: "Delivery method is locked after the invoice has been sent." }
+  }
+
+  await prisma.invoice.update({
+    where: { id: invoice.id, userId: user.id },
+    data: {
+      deliveryMethod: normalizedMethod,
+      deliveryStatus: "not_sent",
+      deliverySentAt: null,
+      providerReferenceId: null,
+      providerError: null,
+    },
+  })
+
+  revalidatePath("/invoices")
+  revalidatePath(`/invoices/${invoiceId}`)
+  return { success: true }
+}
+
+export async function verifyInvoicePeppolRecipientAction(invoiceId: string): Promise<InvoiceActionResult> {
+  const user = await getCurrentUser()
+  const settings = await getSettings(user.id)
+  const invoice = await prisma.invoice.findFirst({
+    where: { id: invoiceId, userId: user.id },
+    include: { customer: true },
+  })
+
+  if (!invoice) {
+    return { success: false, error: "Invoice not found" }
+  }
+
+  if (invoice.status === "draft") {
+    return { success: false, error: "Save the invoice as sent before verifying PEPPOL delivery." }
+  }
+
+  if (isAuthorRightsMode(invoice.invoiceMode)) {
+    return { success: false, error: "Author-rights invoices are currently supported with Email + PDF only." }
+  }
+
+  if (getInvoiceDeliveryMethod(invoice) !== "peppol") {
+    return { success: false, error: "This invoice is not using PEPPOL delivery." }
+  }
+
+  const validation = validateInvoiceForPeppolDelivery({
+    businessName: user.businessName,
+    businessAddress: user.businessAddress,
+    businessBankDetails: user.businessBankDetails,
+    customer: invoice.customer,
+    invoiceNumber: invoice.invoiceNumber,
+    issuedAt: invoice.issuedAt,
+    dueDate: invoice.dueDate,
+    currency: invoice.currency,
+    items: invoice.items,
+    templateData: (invoice.templateData as unknown as InvoiceFormData | undefined) ?? null,
+    settings,
+  })
+
+  if (validation.message) {
+    return { success: false, error: validation.message, fieldErrors: validation.fieldErrors }
+  }
+
+  try {
+    const result = await verifyPeppolRecipient(
+      settings,
+      invoice.customer.peppolId ?? "",
+      invoice.customer.country
+    )
+
+    if (!result.isValid) {
+      await prisma.invoice.update({
+        where: { id: invoice.id, userId: user.id },
+        data: {
+          deliveryMethod: "peppol",
+          deliveryStatus: "failed",
+          providerError: result.message ?? "Recipient is not registered in the PEPPOL network.",
+        },
+      })
+      revalidateInvoiceDeliveryPaths(invoice.id)
+      return { success: false, error: result.message ?? "Recipient is not registered in the PEPPOL network." }
+    }
+
+    await prisma.invoice.update({
+      where: { id: invoice.id, userId: user.id },
+      data: {
+        deliveryMethod: "peppol",
+        deliveryStatus: "verified",
+        providerError: null,
+      },
+    })
+    revalidateInvoiceDeliveryPaths(invoice.id)
+    return { success: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "PEPPOL verification failed."
+    await prisma.invoice.update({
+      where: { id: invoice.id, userId: user.id },
+      data: {
+        deliveryMethod: "peppol",
+        deliveryStatus: "failed",
+        providerError: message,
+      },
+    })
+    revalidateInvoiceDeliveryPaths(invoice.id)
+    return { success: false, error: message }
+  }
+}
+
+export async function sendInvoicePeppolAction(invoiceId: string): Promise<InvoiceActionResult> {
+  const user = await getCurrentUser()
+  const settings = await getSettings(user.id)
+  const invoice = await prisma.invoice.findFirst({
+    where: { id: invoiceId, userId: user.id },
+    include: { customer: true },
+  })
+
+  if (!invoice) {
+    return { success: false, error: "Invoice not found" }
+  }
+
+  if (invoice.status === "draft") {
+    return { success: false, error: "Save the invoice as sent before sending it via PEPPOL." }
+  }
+
+  if (isAuthorRightsMode(invoice.invoiceMode)) {
+    return { success: false, error: "Author-rights invoices are currently supported with Email + PDF only." }
+  }
+
+  if (getInvoiceDeliveryMethod(invoice) !== "peppol") {
+    return { success: false, error: "This invoice is not using PEPPOL delivery." }
+  }
+
+  const validation = validateInvoiceForPeppolDelivery({
+    businessName: user.businessName,
+    businessAddress: user.businessAddress,
+    businessBankDetails: user.businessBankDetails,
+    customer: invoice.customer,
+    invoiceNumber: invoice.invoiceNumber,
+    issuedAt: invoice.issuedAt,
+    dueDate: invoice.dueDate,
+    currency: invoice.currency,
+    items: invoice.items,
+    templateData: (invoice.templateData as unknown as InvoiceFormData | undefined) ?? null,
+    settings,
+  })
+
+  if (validation.message) {
+    return { success: false, error: validation.message, fieldErrors: validation.fieldErrors }
+  }
+
+  try {
+    const verification = await verifyPeppolRecipient(
+      settings,
+      invoice.customer.peppolId ?? "",
+      invoice.customer.country
+    )
+
+    if (!verification.isValid) {
+      await prisma.invoice.update({
+        where: { id: invoice.id, userId: user.id },
+        data: {
+          deliveryMethod: "peppol",
+          deliveryStatus: "failed",
+          providerError: verification.message ?? "Recipient is not registered in the PEPPOL network.",
+        },
+      })
+      revalidateInvoiceDeliveryPaths(invoice.id)
+      return { success: false, error: verification.message ?? "Recipient is not registered in the PEPPOL network." }
+    }
+
+    const payload = buildRecommandInvoicePayload(user, settings, invoice)
+    const result = await sendInvoiceViaRecommand(
+      settings,
+      validation.normalizedPeppolAddress ?? invoice.customer.peppolId ?? "",
+      invoice.customer.country,
+      payload
+    )
+
+    if (!result.success) {
+      const providerError = flattenProviderErrors(result.errors)
+      await prisma.invoice.update({
+        where: { id: invoice.id, userId: user.id },
+        data: {
+          deliveryMethod: "peppol",
+          deliveryStatus: "failed",
+          providerError,
+        },
+      })
+      revalidateInvoiceDeliveryPaths(invoice.id)
+      return { success: false, error: providerError }
+    }
+
+    await prisma.invoice.update({
+      where: { id: invoice.id, userId: user.id },
+      data: {
+        deliveryMethod: "peppol",
+        deliveryStatus: "sent",
+        deliverySentAt: new Date(),
+        providerReferenceId: result.id ?? validation.normalizedPeppolAddress,
+        providerError: null,
+      },
+    })
+    revalidateInvoiceDeliveryPaths(invoice.id)
+    return { success: true, data: { providerReferenceId: result.id } }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "PEPPOL send failed."
+    await prisma.invoice.update({
+      where: { id: invoice.id, userId: user.id },
+      data: {
+        deliveryMethod: "peppol",
+        deliveryStatus: "failed",
+        providerError: message,
+      },
+    })
+    revalidateInvoiceDeliveryPaths(invoice.id)
+    return { success: false, error: message }
+  }
+}
+
+export async function downloadInvoicePDFAction(invoiceId: string): Promise<{ base64: string; filename: string }> {
+  const user = await getCurrentUser()
+  const invoice = await getInvoiceById(invoiceId, user.id)
+  if (!invoice) throw new Error("Invoice not found")
+  if (!invoice.templateData) throw new Error("No template data")
+
+  const templateData = invoice.templateData as unknown as InvoiceFormData
+  const pdfBuffer = await generateInvoicePDF(templateData)
+  const base64 = Buffer.from(pdfBuffer).toString("base64")
+  return { base64, filename: `${invoice.invoiceNumber}.pdf` }
+}
+
+export async function duplicateInvoiceAction(id: string) {
+  const user = await getCurrentUser()
+  const original = await getInvoiceById(id, user.id)
+  if (!original) throw new Error("Invoice not found")
+  if (original.status === "draft") throw new Error("Draft invoices should be edited instead of duplicated")
+
+  const newInvoiceNumber = await getNextInvoiceNumber(user.id)
+  const today = new Date()
+
+  const daysUntilDue =
+    original.dueDate && original.issuedAt
+      ? Math.round(
+          (new Date(original.dueDate).getTime() - new Date(original.issuedAt).getTime()) /
+            (1000 * 60 * 60 * 24)
+        )
+      : 30
+  const newDueDate = new Date(today.getTime() + daysUntilDue * 24 * 60 * 60 * 1000)
+
+  const newInvoice = await createInvoice(user.id, {
+    customerId: original.customerId ?? "",
+    invoiceNumber: newInvoiceNumber,
+    status: "draft",
+    issuedAt: today,
+    dueDate: newDueDate,
+    currency: original.currency,
+    subtotal: original.subtotal,
+    taxTotal: original.taxTotal,
+    total: original.total,
+    items: original.items,
+    taxes: original.taxes ?? undefined,
+    fees: original.fees ?? undefined,
+    paymentReference: original.paymentReference ?? null,
+    poNumber: original.poNumber ?? null,
+    subject: original.subject ?? null,
+    notes: original.notes ?? null,
+    paymentTerms: original.paymentTerms ?? null,
+    invoiceMode: original.invoiceMode ?? "standard",
+    authorRightsData: original.authorRightsData ?? undefined,
+    isVatReversed: original.isVatReversed ?? false,
+    deliveryMethod: original.deliveryMethod,
+    deliveryStatus: "not_sent",
+    deliverySentAt: null,
+    providerReferenceId: null,
+    providerError: null,
+    templateData: original.templateData ?? undefined,
+  })
+
+  revalidatePath("/invoices")
+  return { success: true, data: newInvoice }
+}
+
+export async function uploadAndAttachFileToInvoiceAction(
+  invoiceId: string,
+  formData: FormData
+): Promise<InvoiceActionResult> {
+  const user = await getCurrentUser()
+  const invoice = await prisma.invoice.findFirst({
+    where: { id: invoiceId, userId: user.id },
+    include: { customer: true },
+  })
+
+  if (!invoice) {
+    return { success: false, error: "Invoice not found" }
+  }
+
+  const files = formData.getAll("files") as File[]
+  if (!files.length) {
+    return { success: false, error: "No files provided" }
+  }
+
+  const totalSize = files.reduce((sum, file) => sum + file.size, 0)
+  if (!isEnoughStorageToUploadFile(user, totalSize)) {
+    return { success: false, error: "Insufficient storage" }
+  }
+
+  const transactionId = await ensureInvoiceTransaction(user.id, invoice)
+  const transaction = await prisma.transaction.findFirst({
+    where: { id: transactionId, userId: user.id },
+  })
+
+  if (!transaction) {
+    return { success: false, error: "Linked invoice transaction not found" }
+  }
+
+  const currentFiles = Array.isArray(transaction.files) ? (transaction.files as string[]) : []
+  const userUploadsDir = getUserUploadsDirectory(user)
+  const nextFiles = [...currentFiles]
+
+  for (const file of files) {
+    if (!(file instanceof File)) continue
+
+    const fileUuid = randomUUID()
+    const relativeFilePath = unsortedFilePath(fileUuid, file.name)
+    const fullFilePath = safePathJoin(userUploadsDir, relativeFilePath)
+    const buffer = Buffer.from(await file.arrayBuffer())
+
+    await mkdir(path.dirname(fullFilePath), { recursive: true })
+    await writeFile(fullFilePath, buffer)
+
+    const fileRecord = await createFile(user.id, {
+      id: fileUuid,
+      filename: file.name,
+      path: relativeFilePath,
+      mimetype: file.type,
+      metadata: { size: file.size, lastModified: file.lastModified },
+    })
+
+    await updateFile(fileRecord.id, user.id, { isReviewed: true })
+    nextFiles.push(fileRecord.id)
+  }
+
+  await prisma.transaction.update({
+    where: { id: transaction.id, userId: user.id },
+    data: { files: nextFiles },
+  })
+
+  const storageUsed = await getDirectorySize(userUploadsDir)
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { storageUsed },
+  })
+
+  revalidatePath("/invoices")
+  revalidatePath(`/invoices/${invoiceId}`)
+  revalidatePath("/files")
+
+  return { success: true }
+}
+
+async function validateInvoiceDraftOrSent(
+  userId: string,
+  user: User,
+  data: CreateInvoiceData
+): Promise<InvoiceActionResult> {
+  if (data.status !== "sent") {
+    return { success: true }
+  }
+
+  if (isAuthorRightsMode(data.invoiceMode) && normalizeInvoiceDeliveryMethod(data.deliveryMethod) === "peppol") {
+    return {
+      success: false,
+      error: "Author-rights invoices are currently supported with Email + PDF only.",
+      fieldErrors: { deliveryMethod: "Author-rights invoices are currently supported with Email + PDF only." },
+    }
+  }
+
+  const customer = await prisma.customer.findFirst({
+    where: { id: data.customerId, userId },
+  })
+
+  const validation = validateInvoiceForSending({
+    businessName: user.businessName,
+    businessAddress: user.businessAddress,
+    businessBankDetails: user.businessBankDetails,
+    customer,
+    invoiceNumber: data.invoiceNumber,
+    issuedAt: data.issuedAt,
+    dueDate: data.dueDate,
+    currency: data.currency,
+    items: data.items,
+    templateData: (data.templateData as InvoiceFormData | undefined) ?? null,
+  })
+
+  if (validation.message) {
+    return {
+      success: false,
+      error: validation.message,
+      fieldErrors: validation.fieldErrors,
+    }
+  }
+
+  return { success: true }
+}
+
+function formatDateForApi(date: Date | string | null | undefined): string | undefined {
+  if (!date) return undefined
+  const value = date instanceof Date ? date : new Date(date)
+  return Number.isNaN(value.getTime()) ? undefined : value.toISOString().slice(0, 10)
+}
+
+function extractIban(value?: string | null): string | null {
+  if (!value) return null
+  const compact = value.toUpperCase().replace(/\s+/g, "")
+  const match = compact.match(/[A-Z]{2}[0-9A-Z]{13,32}/)
+  return match?.[0] ?? null
+}
+
+function flattenProviderErrors(errors?: Record<string, string[]>): string {
+  if (!errors) return "Recommand rejected the invoice."
+  return Object.entries(errors)
+    .flatMap(([field, messages]) => messages.map((message) => `${field}: ${message}`))
+    .join(" ")
+}
+
+function getPeppolVatCategory(invoice: Prisma.InvoiceGetPayload<{ include: { customer: true } }>, taxRate: number) {
+  if (invoice.isVatReversed) {
+    return { category: "AE", percentage: "0.00" }
+  }
+
+  if (taxRate <= 0) {
+    return { category: "Z", percentage: "0.00" }
+  }
+
+  return { category: "S", percentage: taxRate.toFixed(2) }
+}
+
+function buildRecommandInvoicePayload(
+  user: User,
+  settings: Record<string, string>,
+  invoice: Prisma.InvoiceGetPayload<{ include: { customer: true } }>
+) {
+  const items = Array.isArray(invoice.items) ? invoice.items : []
+  const taxes = Array.isArray(invoice.taxes) ? invoice.taxes : []
+  const taxRate =
+    invoice.isVatReversed
+      ? 0
+      : typeof taxes[0] === "object" &&
+          taxes[0] !== null &&
+          "rate" in taxes[0] &&
+          typeof taxes[0].rate === "number"
+        ? taxes[0].rate
+        : invoice.subtotal > 0
+          ? Number(((invoice.taxTotal / invoice.subtotal) * 100).toFixed(2))
+          : 0
+  const vat = getPeppolVatCategory(invoice, taxRate)
+
+  const lines = items
+    .filter((item): item is { name?: string; subtitle?: string; quantity?: number; unitPrice?: number; subtotal?: number } => {
+      return typeof item === "object" && item !== null
+    })
+    .map((item, index) => ({
+      name: item.name?.trim() || `Line ${index + 1}`,
+      description: item.subtitle?.trim() || undefined,
+      sellersId: `${invoice.invoiceNumber}-${index + 1}`,
+      quantity: Number(item.quantity ?? 1).toFixed(2),
+      unitCode: "C62",
+      netPriceAmount: Number(item.unitPrice ?? 0).toFixed(2),
+      vat,
+    }))
+
+  return {
+    invoiceNumber: invoice.invoiceNumber,
+    issueDate: formatDateForApi(invoice.issuedAt),
+    dueDate: formatDateForApi(invoice.dueDate),
+    note: invoice.notes ?? undefined,
+    buyerReference: invoice.poNumber ?? invoice.paymentReference ?? undefined,
+    buyer: {
+      vatNumber: invoice.customer.vatNumber,
+      name: invoice.customer.name,
+      street: invoice.customer.street,
+      city: invoice.customer.city,
+      postalZone: invoice.customer.zipCode,
+      country: normalizeCountryCode(invoice.customer.country),
+    },
+    paymentMeans: [
+      {
+        paymentMethod: "credit_transfer",
+        reference: invoice.paymentReference || invoice.invoiceNumber,
+        iban: extractIban(settings.business_iban || user.businessBankDetails),
+      },
+    ],
+    paymentTerms: invoice.paymentTerms ? { note: invoice.paymentTerms } : undefined,
+    lines,
+  }
+}
+
+function revalidateInvoiceDeliveryPaths(invoiceId: string) {
+  revalidatePath("/dashboard")
+  revalidatePath("/invoices")
+  revalidatePath(`/invoices/${invoiceId}`)
+}
+
+async function ensureInvoiceTransaction(
+  userId: string,
+  invoice: Prisma.InvoiceGetPayload<{ include: { customer: true } }>
+): Promise<string> {
+  if (invoice.transactionId) {
+    const existingTransaction = await prisma.transaction.findFirst({
+      where: { id: invoice.transactionId, userId },
+    })
+    if (existingTransaction) {
+      return existingTransaction.id
+    }
+  }
+
+  const transaction = await createTransaction(userId, {
+    name: invoice.invoiceNumber,
+    total: invoice.total,
+    currencyCode: invoice.currency,
+    type: "income",
+    issuedAt: invoice.issuedAt,
+    categoryCode: "invoice",
+    customerId: invoice.customerId,
+    files: [],
+  })
+
+  await prisma.invoice.update({
+    where: { id: invoice.id, userId },
+    data: { transactionId: transaction.id },
+  })
+
+  return transaction.id
 }

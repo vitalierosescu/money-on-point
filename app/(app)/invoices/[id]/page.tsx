@@ -1,10 +1,21 @@
 import { InvoiceActions } from "@/components/invoices/invoice-actions"
+import { InvoiceDocumentsPanel } from "@/components/invoices/invoice-documents-panel"
 import { InvoicePreview } from "@/components/invoices/invoice-preview"
 import { InvoiceStatusBadge } from "@/components/invoices/invoice-status-badge"
-import { InvoiceFormData } from "@/app/(app)/apps/invoices/components/invoice-page"
+import { PageShell } from "@/components/ui/page-shell"
+import {
+  getInvoiceDeliveryMethod,
+  getInvoiceDeliveryMethodLabel,
+  getInvoiceDeliveryStatusLabel,
+  normalizeInvoiceDeliveryStatus,
+} from "@/lib/invoice-delivery"
+import { isAuthorRightsMode, type AuthorRightsData } from "@/lib/author-rights"
+import { InvoiceFormData } from "@/lib/invoice-pdf/types"
 import { Button } from "@/components/ui/button"
 import { getCurrentUser } from "@/lib/auth"
 import { getInvoiceById } from "@/models/invoices"
+import { getFilesByTransactionId } from "@/models/files"
+import { formatCurrency } from "@/lib/utils"
 import { Pencil } from "lucide-react"
 import { Metadata } from "next"
 import Link from "next/link"
@@ -34,8 +45,18 @@ export default async function InvoiceDetailPage({
   const templateData = invoice.templateData
     ? (invoice.templateData as unknown as InvoiceFormData)
     : null
+  const attachedFiles = invoiceFull.transactionId
+    ? await getFilesByTransactionId(invoiceFull.transactionId, user.id)
+    : []
+  const deliveryMethod = getInvoiceDeliveryMethod(invoiceFull)
+  const deliveryStatus = normalizeInvoiceDeliveryStatus(invoiceFull.deliveryStatus)
+  const authorRightsData = invoice.authorRightsData
+    ? (invoice.authorRightsData as AuthorRightsData)
+    : null
+  const isAuthorRightsInvoice = isAuthorRightsMode(invoice.invoiceMode)
 
   return (
+    <PageShell>
     <div className="flex flex-col lg:flex-row gap-8 max-w-5xl">
       {/* Left: Invoice preview */}
       <div className="flex-1 border rounded-lg overflow-hidden">
@@ -44,12 +65,14 @@ export default async function InvoiceDetailPage({
         ) : (
           <div className="min-h-[600px] flex items-center justify-center text-muted-foreground flex-col gap-4">
             <p className="text-lg font-medium">Invoice {invoice.invoiceNumber}</p>
-            <Link href={`/invoices/${id}/edit`}>
-              <Button variant="outline">
-                <Pencil className="mr-2 h-4 w-4" />
-                Edit &amp; Preview PDF
-              </Button>
-            </Link>
+            {invoice.status === "draft" && (
+              <Link href={`/invoices/${id}/edit`}>
+                <Button variant="outline">
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit &amp; Preview PDF
+                </Button>
+              </Link>
+            )}
           </div>
         )}
       </div>
@@ -61,11 +84,13 @@ export default async function InvoiceDetailPage({
           <h2 className="text-2xl font-bold">{invoice.invoiceNumber}</h2>
           <div className="flex items-center gap-2">
             <InvoiceStatusBadge status={invoice.status} />
-            <Link href={`/invoices/${id}/edit`}>
-              <Button variant="ghost" size="icon">
-                <Pencil className="h-4 w-4" />
-              </Button>
-            </Link>
+            {invoice.status === "draft" && (
+              <Link href={`/invoices/${id}/edit`}>
+                <Button variant="ghost" size="icon">
+                  <Pencil className="h-4 w-4" />
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
 
@@ -74,6 +99,12 @@ export default async function InvoiceDetailPage({
           <p className="font-medium">{invoiceFull.customer?.name}</p>
           {invoiceFull.customer?.email && (
             <p className="text-muted-foreground">{invoiceFull.customer.email}</p>
+          )}
+          {invoiceFull.customer?.vatNumber && (
+            <p className="text-muted-foreground">VAT: {invoiceFull.customer.vatNumber}</p>
+          )}
+          {invoiceFull.customer?.peppolId && (
+            <p className="text-muted-foreground">PEPPOL: {invoiceFull.customer.peppolId}</p>
           )}
         </div>
 
@@ -91,6 +122,20 @@ export default async function InvoiceDetailPage({
             <span>Total</span>
             <span>{invoice.currency} {(invoice.total / 100).toFixed(2)}</span>
           </div>
+          <div className="flex justify-between text-muted-foreground">
+            <span>Subtotal</span>
+            <span>{invoice.currency} {(invoice.subtotal / 100).toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between text-muted-foreground">
+            <span>VAT</span>
+            <span>{invoice.currency} {(invoice.taxTotal / 100).toFixed(2)}</span>
+          </div>
+          {invoice.isVatReversed && (
+            <div className="flex justify-between text-muted-foreground">
+              <span>VAT mode</span>
+              <span>Reverse charge</span>
+            </div>
+          )}
           {invoice.paidAmount > 0 && (
             <div className="flex justify-between text-green-600">
               <span>Paid</span>
@@ -103,7 +148,68 @@ export default async function InvoiceDetailPage({
               <span>{invoice.currency} {((invoice.total - invoice.paidAmount) / 100).toFixed(2)}</span>
             </div>
           )}
+          {invoice.paymentReference && (
+            <div className="flex justify-between text-muted-foreground">
+              <span>Reference</span>
+              <span className="max-w-[55%] truncate text-right">{invoice.paymentReference}</span>
+            </div>
+          )}
+          <div className="flex justify-between text-muted-foreground">
+            <span>Delivery</span>
+            <span>{getInvoiceDeliveryMethodLabel(deliveryMethod)}</span>
+          </div>
+          {isAuthorRightsInvoice && (
+            <div className="flex justify-between text-muted-foreground">
+              <span>Invoice mode</span>
+              <span>Author rights</span>
+            </div>
+          )}
+          <div className="flex justify-between text-muted-foreground">
+            <span>Delivery status</span>
+            <span>{getInvoiceDeliveryStatusLabel(deliveryStatus)}</span>
+          </div>
+          {invoice.providerReferenceId && (
+            <div className="flex justify-between text-muted-foreground">
+              <span>Provider ref</span>
+              <span className="max-w-[55%] truncate text-right">{invoice.providerReferenceId}</span>
+            </div>
+          )}
+          {invoice.providerError && (
+            <div className="rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              {invoice.providerError}
+            </div>
+          )}
         </div>
+
+        {authorRightsData && (
+          <div className="space-y-2 text-sm border-t pt-4">
+            <h3 className="font-medium">Author rights</h3>
+            <div className="flex justify-between text-muted-foreground">
+              <span>Contract ref</span>
+              <span className="max-w-[55%] truncate text-right">{authorRightsData.contractReference || "—"}</span>
+            </div>
+            <div className="flex justify-between text-muted-foreground">
+              <span>Agreement date</span>
+              <span>{authorRightsData.agreementDate || "—"}</span>
+            </div>
+            <div className="flex justify-between text-muted-foreground">
+              <span>Professional compensation</span>
+              <span>{formatCurrency(authorRightsData.professionalGrossCents, invoice.currency)}</span>
+            </div>
+            <div className="flex justify-between text-muted-foreground">
+              <span>Author rights compensation</span>
+              <span>{formatCurrency(authorRightsData.authorRightsGrossCents, invoice.currency)}</span>
+            </div>
+            <div className="flex justify-between text-muted-foreground">
+              <span>Withholding</span>
+              <span>{formatCurrency(authorRightsData.withholdingAmountCents, invoice.currency)}</span>
+            </div>
+            <div className="flex justify-between font-medium">
+              <span>Net payable</span>
+              <span>{formatCurrency(authorRightsData.netPayableCents, invoice.currency)}</span>
+            </div>
+          </div>
+        )}
 
         {/* Actions */}
         <div className="border-t pt-4">
@@ -126,7 +232,10 @@ export default async function InvoiceDetailPage({
             </div>
           </div>
         )}
+
+        <InvoiceDocumentsPanel invoiceId={invoice.id} files={attachedFiles} />
       </div>
     </div>
+    </PageShell>
   )
 }

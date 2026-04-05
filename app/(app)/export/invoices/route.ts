@@ -1,3 +1,5 @@
+import { getInvoiceDeliveryMethod, normalizeCountryCode, normalizeInvoiceDeliveryStatus } from "@/lib/invoice-delivery"
+import { isAuthorRightsMode, type AuthorRightsData } from "@/lib/author-rights"
 import { getCurrentUser } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { parseYearParam } from "@/lib/parse-year-param"
@@ -22,10 +24,13 @@ export async function GET(request: Request) {
   })
 
   const rows = invoices.map((inv) => ({
+    invoiceMode: inv.invoiceMode ?? "standard",
     invoiceNumber: inv.invoiceNumber,
     status: inv.status,
     customer: inv.customer?.name ?? "",
+    customerCountry: normalizeCountryCode(inv.customer?.country),
     vatNumber: inv.customer?.vatNumber ?? "",
+    peppolId: inv.customer?.peppolId ?? "",
     issuedAt: inv.issuedAt
       ? new Intl.DateTimeFormat("nl-BE").format(new Date(inv.issuedAt))
       : "",
@@ -39,6 +44,19 @@ export async function GET(request: Request) {
     subtotal: ((inv.subtotal ?? 0) / 100).toFixed(2),
     taxTotal: ((inv.taxTotal ?? 0) / 100).toFixed(2),
     total: (inv.total / 100).toFixed(2),
+    paidAmount: ((inv.paidAmount ?? 0) / 100).toFixed(2),
+    reverseCharge: inv.isVatReversed ? "yes" : "no",
+    deliveryMethod: getInvoiceDeliveryMethod(inv),
+    deliveryStatus: normalizeInvoiceDeliveryStatus(inv.deliveryStatus),
+    authorRightsContractReference: isAuthorRightsMode(inv.invoiceMode)
+      ? ((inv.authorRightsData as AuthorRightsData | null)?.contractReference ?? "")
+      : "",
+    authorRightsGross: isAuthorRightsMode(inv.invoiceMode)
+      ? (((inv.authorRightsData as AuthorRightsData | null)?.authorRightsGrossCents ?? 0) / 100).toFixed(2)
+      : "",
+    authorRightsWithholding: isAuthorRightsMode(inv.invoiceMode)
+      ? (((inv.authorRightsData as AuthorRightsData | null)?.withholdingAmountCents ?? 0) / 100).toFixed(2)
+      : "",
   }))
 
   const pass = new PassThrough()

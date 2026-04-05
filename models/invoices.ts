@@ -1,9 +1,10 @@
 import { prisma } from "@/lib/db"
+import { normalizeInvoiceDeliveryMethod, normalizeInvoiceDeliveryStatus } from "@/lib/invoice-delivery"
 import { Invoice, Prisma } from "@/prisma/client"
 import { cache } from "react"
 
 export type InvoiceWithCustomer = Prisma.InvoiceGetPayload<{
-  include: { customer: true; payments: true }
+  include: { customer: true; payments: true; transaction: true }
 }>
 
 export type InvoiceFilters = {
@@ -50,7 +51,7 @@ export const getInvoices = async (userId: string, filters?: InvoiceFilters): Pro
 
   return prisma.invoice.findMany({
     where,
-    include: { customer: true, payments: true },
+    include: { customer: true, payments: true, transaction: true },
     orderBy: { issuedAt: "desc" },
   })
 }
@@ -109,7 +110,14 @@ export type CreateInvoiceData = {
   subject?: string | null
   notes?: string | null
   paymentTerms?: string | null
+  invoiceMode?: string | null
+  authorRightsData?: unknown
   isVatReversed?: boolean
+  deliveryMethod?: string | null
+  deliveryStatus?: string | null
+  deliverySentAt?: Date | null
+  providerReferenceId?: string | null
+  providerError?: string | null
   templateData?: unknown
   pdfPath?: string | null
 }
@@ -125,6 +133,13 @@ export const createInvoice = async (
       taxes: data.taxes as Prisma.InputJsonValue,
       fees: data.fees as Prisma.InputJsonValue,
       templateData: data.templateData as Prisma.InputJsonValue,
+      invoiceMode: data.invoiceMode ?? "standard",
+      authorRightsData: data.authorRightsData as Prisma.InputJsonValue | undefined,
+      deliveryMethod: normalizeInvoiceDeliveryMethod(data.deliveryMethod) ?? "email_pdf",
+      deliveryStatus: normalizeInvoiceDeliveryStatus(data.deliveryStatus),
+      deliverySentAt: data.deliverySentAt,
+      providerReferenceId: data.providerReferenceId,
+      providerError: data.providerError,
       userId,
     },
     include: { customer: true },
@@ -136,13 +151,45 @@ export const updateInvoice = async (
   userId: string,
   data: Partial<CreateInvoiceData>
 ): Promise<Invoice> => {
-  const { items, taxes, fees, templateData, ...rest } = data
+  const {
+    items,
+    taxes,
+    fees,
+    templateData,
+    invoiceMode,
+    authorRightsData,
+    deliveryMethod,
+    deliveryStatus,
+    deliverySentAt,
+    providerReferenceId,
+    providerError,
+    ...rest
+  } = data
   const updateData: Prisma.InvoiceUpdateInput = { ...rest }
   if (items !== undefined) updateData.items = items as Prisma.InputJsonValue
   if (taxes !== undefined) updateData.taxes = taxes as Prisma.InputJsonValue
   if (fees !== undefined) updateData.fees = fees as Prisma.InputJsonValue
   if (templateData !== undefined)
     updateData.templateData = templateData as Prisma.InputJsonValue
+  if (invoiceMode !== undefined) updateData.invoiceMode = invoiceMode ?? "standard"
+  if (authorRightsData !== undefined) {
+    updateData.authorRightsData = authorRightsData as Prisma.InputJsonValue
+  }
+  if (deliveryMethod !== undefined) {
+    updateData.deliveryMethod = normalizeInvoiceDeliveryMethod(deliveryMethod) ?? "email_pdf"
+  }
+  if (deliveryStatus !== undefined) {
+    updateData.deliveryStatus = normalizeInvoiceDeliveryStatus(deliveryStatus)
+  }
+  if (deliverySentAt !== undefined) {
+    updateData.deliverySentAt = deliverySentAt
+  }
+  if (providerReferenceId !== undefined) {
+    updateData.providerReferenceId = providerReferenceId
+  }
+  if (providerError !== undefined) {
+    updateData.providerError = providerError
+  }
 
   return prisma.invoice.update({
     where: { id, userId },
@@ -188,7 +235,7 @@ export const getOutstandingInvoices = cache(async (userId: string): Promise<Invo
       userId,
       status: { in: ["sent", "overdue", "partially_paid"] },
     },
-    include: { customer: true, payments: true },
+    include: { customer: true, payments: true, transaction: true },
     orderBy: { dueDate: "asc" },
   })
 })

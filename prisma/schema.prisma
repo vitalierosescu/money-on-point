@@ -170,38 +170,38 @@ model File {
 }
 
 model Transaction {
-  id                    String    @id @default(uuid()) @db.Uuid
-  userId                String    @map("user_id") @db.Uuid
-  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                    String        @id @default(uuid()) @db.Uuid
+  userId                String        @map("user_id") @db.Uuid
+  user                  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   name                  String?
   description           String?
   merchant              String?
   total                 Int?
-  taxAmount             Int?      @map("tax_amount")
-  currencyCode          String?   @map("currency_code")
-  convertedTotal        Int?      @map("converted_total")
-  convertedCurrencyCode String?   @map("converted_currency_code")
-  type                  String?   @default("expense")
-  items                 Json      @default("[]")
+  taxAmount             Int?          @map("tax_amount")
+  currencyCode          String?       @map("currency_code")
+  convertedTotal        Int?          @map("converted_total")
+  convertedCurrencyCode String?       @map("converted_currency_code")
+  type                  String?       @default("expense")
+  items                 Json          @default("[]")
   note                  String?
-  files                 Json      @default("[]")
+  files                 Json          @default("[]")
   extra                 Json?
-  category              Category? @relation(fields: [categoryCode, userId], references: [code, userId])
-  categoryCode          String?   @map("category_code")
-  project               Project?  @relation(fields: [projectCode, userId], references: [code, userId])
-  projectCode           String?   @map("project_code")
-  issuedAt              DateTime? @map("issued_at")
-  customerId            String?   @map("customer_id") @db.Uuid
-  customer              Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  category              Category?     @relation(fields: [categoryCode, userId], references: [code, userId])
+  categoryCode          String?       @map("category_code")
+  project               Project?      @relation(fields: [projectCode, userId], references: [code, userId])
+  projectCode           String?       @map("project_code")
+  issuedAt              DateTime?     @map("issued_at")
+  customerId            String?       @map("customer_id") @db.Uuid
+  customer              Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
   invoice               Invoice?
-  createdAt             DateTime  @default(now()) @map("created_at")
-  updatedAt             DateTime  @updatedAt @map("updated_at")
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
   text                  String?
-  status          String?   @map("status")
-  dueDate         DateTime? @map("due_date")
-  linkedExpenseId String?   @map("linked_expense_id") @db.Uuid
-  linkedExpense   Transaction?  @relation("CreditNote", fields: [linkedExpenseId], references: [id], onDelete: SetNull)
-  creditNotes     Transaction[] @relation("CreditNote")
+  status                String?       @map("status")
+  dueDate               DateTime?     @map("due_date")
+  linkedExpenseId       String?       @map("linked_expense_id") @db.Uuid
+  linkedExpense         Transaction?  @relation("CreditNote", fields: [linkedExpenseId], references: [id], onDelete: SetNull)
+  creditNotes           Transaction[] @relation("CreditNote")
 
   @@index([userId])
   @@index([projectCode])
@@ -225,99 +225,110 @@ model Currency {
 }
 
 model Customer {
-  id              String        @id @default(uuid()) @db.Uuid
-  userId          String        @map("user_id") @db.Uuid
-  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  name            String
-  email           String?
-  billingEmails   Json?         @map("billing_emails")
-  phone           String?
-  website         String?
-  contactPerson   String?       @map("contact_person")
+  name          String
+  email         String?
+  billingEmails Json?   @map("billing_emails")
+  phone         String?
+  website       String?
+  contactPerson String? @map("contact_person")
 
-  street          String?
-  houseNumber     String?       @map("house_number")
-  bus             String?
-  zipCode         String?       @map("zip_code")
-  city            String?
-  country         String?       @default("Belgium")
+  street      String?
+  houseNumber String? @map("house_number")
+  bus         String?
+  zipCode     String? @map("zip_code")
+  city        String?
+  country     String? @default("Belgium")
 
-  vatNumber       String?       @map("vat_number")
-  peppolId        String?       @map("peppol_id")
-  defaultRate     Decimal?      @map("default_rate")
-  defaultCurrency String?       @default("EUR") @map("default_currency")
+  vatNumber       String?  @map("vat_number")
+  peppolId        String?  @map("peppol_id")
+  invoiceDeliveryMethod String @default("manual_choice") @map("invoice_delivery_method")
+  defaultRate     Decimal? @map("default_rate")
+  defaultCurrency String?  @default("EUR") @map("default_currency")
   note            String?
 
-  createdAt       DateTime      @default(now()) @map("created_at")
-  updatedAt       DateTime      @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  invoices        Invoice[]
-  transactions    Transaction[]
+  invoices     Invoice[]
+  transactions Transaction[]
 
   @@map("customers")
 }
 
 model Invoice {
-  id               String    @id @default(uuid()) @db.Uuid
-  userId           String    @map("user_id") @db.Uuid
-  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  customerId       String    @map("customer_id") @db.Uuid
-  customer         Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customerId String   @map("customer_id") @db.Uuid
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
-  invoiceNumber    String    @map("invoice_number")
-  status           String    @default("draft")
+  invoiceNumber String @map("invoice_number")
+  status        String @default("draft")
 
-  issuedAt         DateTime  @map("issued_at")
-  dueDate          DateTime  @map("due_date")
-  paidAt           DateTime? @map("paid_at")
+  issuedAt DateTime  @map("issued_at")
+  dueDate  DateTime  @map("due_date")
+  paidAt   DateTime? @map("paid_at")
 
-  currency         String    @default("EUR")
-  subtotal         Int       @default(0)
-  taxTotal         Int       @default(0) @map("tax_total")
-  total            Int       @default(0)
-  paidAmount       Int       @default(0) @map("paid_amount")
+  currency   String @default("EUR")
+  subtotal   Int    @default(0)
+  taxTotal   Int    @default(0) @map("tax_total")
+  total      Int    @default(0)
+  paidAmount Int    @default(0) @map("paid_amount")
 
-  items            Json      @default("[]")
-  taxes            Json?
-  fees             Json?
+  items Json  @default("[]")
+  taxes Json?
+  fees  Json?
 
-  paymentReference String?   @map("payment_reference")
-  poNumber         String?   @map("po_number")
+  paymentReference String? @map("payment_reference")
+  poNumber         String? @map("po_number")
   subject          String?
   notes            String?
-  paymentTerms     String?   @map("payment_terms")
-  isVatReversed    Boolean   @default(false) @map("is_vat_reversed")
+  paymentTerms     String? @map("payment_terms")
+  invoiceMode      String  @default("standard") @map("invoice_mode")
+  authorRightsData Json?   @map("author_rights_data")
+  isVatReversed    Boolean @default(false) @map("is_vat_reversed")
+  deliveryMethod   String  @default("email_pdf") @map("delivery_method")
+  deliveryStatus   String  @default("not_sent") @map("delivery_status")
+  deliverySentAt   DateTime? @map("delivery_sent_at")
+  providerReferenceId String? @map("provider_reference_id")
+  providerError    String? @map("provider_error")
 
-  templateData     Json?     @map("template_data")
-  pdfPath          String?   @map("pdf_path")
+  templateData Json?   @map("template_data")
+  pdfPath      String? @map("pdf_path")
 
-  transactionId    String?   @unique @map("transaction_id") @db.Uuid
-  transaction      Transaction? @relation(fields: [transactionId], references: [id])
+  transactionId String?      @unique @map("transaction_id") @db.Uuid
+  transaction   Transaction? @relation(fields: [transactionId], references: [id])
 
-  payments         Payment[]
+  payments Payment[]
 
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@unique([userId, invoiceNumber])
   @@index([userId])
   @@index([status])
   @@index([customerId])
+  @@index([invoiceMode])
+  @@index([deliveryMethod])
+  @@index([deliveryStatus])
   @@map("invoices")
 }
 
 model Payment {
-  id         String   @id @default(uuid()) @db.Uuid
-  invoiceId  String   @map("invoice_id") @db.Uuid
-  invoice    Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  id        String  @id @default(uuid()) @db.Uuid
+  invoiceId String  @map("invoice_id") @db.Uuid
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
-  amount     Int
-  paidAt     DateTime @map("paid_at")
-  note       String?
+  amount Int
+  paidAt DateTime @map("paid_at")
+  note   String?
 
-  createdAt  DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@map("payments")
 }

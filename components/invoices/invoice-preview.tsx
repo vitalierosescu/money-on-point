@@ -1,5 +1,11 @@
-import { InvoiceFormData } from "@/app/(app)/apps/invoices/components/invoice-page"
+import { isAuthorRightsMode } from "@/lib/author-rights"
+import { buildAuthorRightsData, getInvoiceTaxAmount, getInvoiceTotalAmount } from "@/lib/invoice-totals"
+import { InvoiceFormData } from "@/lib/invoice-pdf/types"
 import { formatCurrency } from "@/lib/utils"
+
+function isPresent(val: string | null | undefined): boolean {
+  return !!val && val !== "null" && val !== "undefined"
+}
 
 type InvoicePreviewProps = {
   templateData: InvoiceFormData
@@ -8,20 +14,23 @@ type InvoicePreviewProps = {
 
 export function InvoicePreview({ templateData: d, className }: InvoicePreviewProps) {
   const subtotal = d.items.reduce((s, i) => s + i.subtotal, 0)
-  const taxTotal = d.additionalTaxes.reduce((s, t) => s + t.amount, 0)
-  const feeTotal = d.additionalFees.reduce((s, f) => s + f.amount, 0)
-  const total = (d.taxIncluded ? subtotal : subtotal + taxTotal) + feeTotal
+  const taxTotal = getInvoiceTaxAmount(d)
+  const total = getInvoiceTotalAmount(d)
+  const isAuthorRightsInvoice = isAuthorRightsMode(d.invoiceMode)
+  const authorRightsData = buildAuthorRightsData(d)
 
   return (
-    <div className={`bg-white text-sm font-sans p-8 min-h-[700px] ${className ?? ""}`}>
+    <div className={`bg-white text-sm font-sans p-8 ${className ?? ""}`}>
       {/* Header */}
       <div className="flex justify-between items-start mb-8">
         <div>
-          {d.businessLogo && (
+          {isPresent(d.businessLogo) && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={d.businessLogo} alt="Logo" className="h-12 mb-2 object-contain" />
+            <img src={d.businessLogo!} alt="Logo" className="h-12 mb-2 object-contain" />
           )}
-          <div className="text-xs text-gray-500 whitespace-pre-line">{d.companyDetails}</div>
+          {isPresent(d.companyDetails) && (
+            <div className="text-xs text-gray-500 whitespace-pre-line">{d.companyDetails}</div>
+          )}
         </div>
         <div className="text-right">
           <div className="text-2xl font-bold text-gray-800">{d.title || "Factuur"}</div>
@@ -33,7 +42,7 @@ export function InvoicePreview({ templateData: d, className }: InvoicePreviewPro
       <div className="flex justify-between mb-8">
         <div>
           <div className="text-xs font-semibold text-gray-400 uppercase mb-1">{d.billToLabel || "Aan"}</div>
-          <div className="text-xs whitespace-pre-line">{d.billTo}</div>
+          <div className="text-xs whitespace-pre-line">{isPresent(d.billTo) ? d.billTo : "\u2014"}</div>
         </div>
         <div className="text-right text-xs space-y-1">
           <div>
@@ -81,12 +90,33 @@ export function InvoicePreview({ templateData: d, className }: InvoicePreviewPro
             <span>{d.summarySubtotalLabel || "Subtotaal"}</span>
             <span>{formatCurrency(subtotal * 100, d.currency)}</span>
           </div>
-          {d.additionalTaxes.map((tax, i) => (
-            <div key={i} className="flex justify-between text-gray-500">
-              <span>{tax.name} ({tax.rate}%)</span>
-              <span>{formatCurrency(tax.amount * 100, d.currency)}</span>
-            </div>
-          ))}
+          {isAuthorRightsInvoice && authorRightsData ? (
+            <>
+              <div className="flex justify-between text-gray-500">
+                <span>Beroepsvergoeding</span>
+                <span>{formatCurrency(authorRightsData.professionalGrossCents, d.currency)}</span>
+              </div>
+              <div className="flex justify-between text-gray-500">
+                <span>Auteursrechten</span>
+                <span>{formatCurrency(authorRightsData.authorRightsGrossCents, d.currency)}</span>
+              </div>
+              <div className="flex justify-between text-gray-500">
+                <span>Btw totaal</span>
+                <span>{formatCurrency(authorRightsData.totalVatAmountCents, d.currency)}</span>
+              </div>
+              <div className="flex justify-between text-gray-500">
+                <span>Roerende voorheffing</span>
+                <span>-{formatCurrency(authorRightsData.withholdingAmountCents, d.currency)}</span>
+              </div>
+            </>
+          ) : (
+            d.additionalTaxes.map((tax, i) => (
+              <div key={i} className="flex justify-between text-gray-500">
+                <span>{tax.name} ({tax.rate}%)</span>
+                <span>{formatCurrency(tax.amount * 100, d.currency)}</span>
+              </div>
+            ))
+          )}
           {d.additionalFees.map((fee, i) => (
             <div key={i} className="flex justify-between text-gray-500">
               <span>{fee.name}</span>
@@ -94,17 +124,40 @@ export function InvoicePreview({ templateData: d, className }: InvoicePreviewPro
             </div>
           ))}
           <div className="flex justify-between font-bold border-t pt-1">
-            <span>{d.summaryTotalLabel || "Totaal"}</span>
+            <span>{isAuthorRightsInvoice ? "Netto te betalen" : d.summaryTotalLabel || "Totaal"}</span>
             <span>{formatCurrency(total * 100, d.currency)}</span>
           </div>
+          {isAuthorRightsInvoice && (
+            <div className="flex justify-between text-gray-500">
+              <span>Btw bruto</span>
+              <span>{formatCurrency(Math.round(taxTotal * 100), d.currency)}</span>
+            </div>
+          )}
         </div>
       </div>
 
+      {isAuthorRightsInvoice && authorRightsData && (
+        <div className="mt-6 rounded-md border border-amber-200 bg-amber-50 p-4 text-xs text-gray-600">
+          <div className="font-semibold text-gray-800">Auteursrechten</div>
+          <div className="mt-2 flex justify-between gap-4">
+            <span>Contractreferentie</span>
+            <span>{d.authorRightsContractReference || "\u2014"}</span>
+          </div>
+          <div className="mt-1 flex justify-between gap-4">
+            <span>Datum overeenkomst</span>
+            <span>{d.authorRightsAgreementDate || "\u2014"}</span>
+          </div>
+          {isPresent(d.authorRightsSpecialConditions) && (
+            <p className="mt-2 whitespace-pre-line">{d.authorRightsSpecialConditions}</p>
+          )}
+        </div>
+      )}
+
       {/* Notes + bank details */}
-      {(d.notes || d.bankDetails) && (
+      {(isPresent(d.notes) || isPresent(d.bankDetails)) && (
         <div className="mt-8 pt-4 border-t text-xs text-gray-500 space-y-2">
-          {d.notes && <p className="whitespace-pre-line">{d.notes}</p>}
-          {d.bankDetails && <p className="whitespace-pre-line">{d.bankDetails}</p>}
+          {isPresent(d.notes) && <p className="whitespace-pre-line">{d.notes}</p>}
+          {isPresent(d.bankDetails) && <p className="whitespace-pre-line">{d.bankDetails}</p>}
         </div>
       )}
     </div>

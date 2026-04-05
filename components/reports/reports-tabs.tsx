@@ -16,6 +16,7 @@ import {
   YAxis,
 } from "recharts"
 import type { MonthlyRevenueData, TimeSeriesData, VatQuarterData } from "@/models/stats"
+import type { AuthorRightsYearReport } from "@/models/author-rights"
 import type { InvoiceWithCustomer } from "@/models/invoices"
 import { InvoiceStatusBadge } from "@/components/invoices/invoice-status-badge"
 import Link from "next/link"
@@ -26,6 +27,7 @@ interface ReportsTabsProps {
   vatSummary: VatQuarterData[]
   timeSeries: TimeSeriesData[]
   outstandingInvoices: InvoiceWithCustomer[]
+  authorRightsReport: AuthorRightsYearReport
   defaultCurrency: string
 }
 
@@ -39,6 +41,7 @@ export function ReportsTabs({
   vatSummary,
   timeSeries,
   outstandingInvoices,
+  authorRightsReport,
   defaultCurrency,
 }: ReportsTabsProps) {
   const router = useRouter()
@@ -85,6 +88,7 @@ export function ReportsTabs({
           <TabsTrigger value="cashflow">Cashflow</TabsTrigger>
           <TabsTrigger value="openstaand">Openstaand</TabsTrigger>
           <TabsTrigger value="btw">BTW</TabsTrigger>
+          <TabsTrigger value="auteursrechten">Auteursrechten</TabsTrigger>
         </TabsList>
 
         {/* OMZET TAB */}
@@ -270,6 +274,104 @@ export function ReportsTabs({
               </tbody>
             </table>
           </div>
+        </TabsContent>
+
+        <TabsContent value="auteursrechten" className="space-y-6 pt-4">
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <div className="rounded-lg border p-4">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Bruto auteursrechten</p>
+              <p className="text-2xl font-mono tabular-nums font-semibold">{fmt(authorRightsReport.authorRightsGross, defaultCurrency)}</p>
+            </div>
+            <div className="rounded-lg border p-4">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Roerende voorheffing</p>
+              <p className="text-2xl font-mono tabular-nums font-semibold">{fmt(authorRightsReport.withholding, defaultCurrency)}</p>
+            </div>
+            <div className="rounded-lg border p-4">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Netto auteursrechten</p>
+              <p className="text-2xl font-mono tabular-nums font-semibold">{fmt(authorRightsReport.netRights, defaultCurrency)}</p>
+            </div>
+            <div className="rounded-lg border p-4">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Facturen</p>
+              <p className="text-2xl font-mono tabular-nums font-semibold">{authorRightsReport.invoiceCount}</p>
+            </div>
+          </div>
+
+          <div className="rounded-lg border p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium">Belgische drempel {year}</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {authorRightsReport.rulesConfigured
+                    ? `Gebruik ${authorRightsReport.thresholdUsedPct}% van de geconfigureerde bruto auteursrechtenlimiet.`
+                    : "Geen regels geconfigureerd voor dit inkomstenjaar. Werk de wettelijke drempels bij voor je hierop rekent."}
+                </p>
+              </div>
+              {authorRightsReport.rulesConfigured && authorRightsReport.thresholdAmount !== null && (
+                <div className="text-right text-sm">
+                  <div className="text-muted-foreground">Drempel</div>
+                  <div className="font-mono tabular-nums">{fmt(authorRightsReport.thresholdAmount, defaultCurrency)}</div>
+                </div>
+              )}
+            </div>
+            {authorRightsReport.rulesConfigured && authorRightsReport.thresholdRemaining !== null && (
+              <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
+                <div className="rounded-md border bg-muted/20 px-3 py-2">
+                  <div className="text-muted-foreground">Nog beschikbaar</div>
+                  <div className="font-mono tabular-nums">{fmt(authorRightsReport.thresholdRemaining, defaultCurrency)}</div>
+                </div>
+                <div className="rounded-md border bg-muted/20 px-3 py-2">
+                  <div className="text-muted-foreground">Beroepsvergoeding</div>
+                  <div className="font-mono tabular-nums">{fmt(authorRightsReport.professionalGross, defaultCurrency)}</div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-3">
+            <a
+              href={`/export/author-rights?year=${year}`}
+              className="text-sm px-3 py-2 rounded-md border border-border hover:bg-muted/30 transition-colors"
+            >
+              Jaaroverzicht exporteren
+            </a>
+            <a
+              href={`/export/author-rights/customers?year=${year}`}
+              className="text-sm px-3 py-2 rounded-md border border-border hover:bg-muted/30 transition-colors"
+            >
+              Klanttotalen exporteren
+            </a>
+          </div>
+
+          {authorRightsReport.customerTotals.length === 0 ? (
+            <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">
+              Geen auteursrechtenfacturen voor {year}.
+            </div>
+          ) : (
+            <div className="rounded-lg border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/20 border-b">
+                  <tr>
+                    <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Klant</th>
+                    <th className="px-3 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wide">Facturen</th>
+                    <th className="px-3 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wide">Bruto rechten</th>
+                    <th className="px-3 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wide">Voorheffing</th>
+                    <th className="px-3 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wide">Netto rechten</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {authorRightsReport.customerTotals.map((row) => (
+                    <tr key={row.customerId ?? row.customerName} className="hover:bg-muted/30 transition-colors">
+                      <td className="px-3 py-3">{row.customerName}</td>
+                      <td className="px-3 py-3 text-right font-mono tabular-nums">{row.invoiceCount}</td>
+                      <td className="px-3 py-3 text-right font-mono tabular-nums">{fmt(row.authorRightsGross, defaultCurrency)}</td>
+                      <td className="px-3 py-3 text-right font-mono tabular-nums">{fmt(row.withholding, defaultCurrency)}</td>
+                      <td className="px-3 py-3 text-right font-mono tabular-nums">{fmt(row.netRights, defaultCurrency)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
     </div>
