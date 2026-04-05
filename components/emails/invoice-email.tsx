@@ -7,7 +7,7 @@ interface InvoiceEmailProps {
   invoiceTotal: string
   currency: string
   dueDate: string
-  bankDetails: string
+  bankDetails?: string
   notes?: string
 }
 
