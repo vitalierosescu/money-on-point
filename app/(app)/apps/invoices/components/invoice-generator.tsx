@@ -397,19 +397,21 @@ export function InvoiceGenerator({
 
         {/* Actions Panel */}
         <div className="flex flex-col gap-4">
-          <Button onClick={handleGeneratePDF} disabled={isPdfLoading}>
-            {isPdfLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Generating...
-              </>
-            ) : (
-              <>
-                <FileDown className="mr-2" />
-                Download PDF
-              </>
-            )}
-          </Button>
+          {mode !== "create" && (
+            <Button onClick={handleGeneratePDF} disabled={isPdfLoading}>
+              {isPdfLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <FileDown className="mr-2" />
+                  Download PDF
+                </>
+              )}
+            </Button>
+          )}
           {mode !== "create" && (
             <Button variant="secondary" onClick={() => setIsTemplateDialogOpen(true)}>
               <TextSelect />

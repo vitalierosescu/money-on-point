@@ -246,7 +246,6 @@ export function InvoicePage({ invoiceData, dispatch, currencies }: InvoicePagePr
     [dispatch]
   )
 
-  const addAdditionalTax = useCallback(() => dispatch({ type: "ADD_TAX" }), [dispatch])
   const removeAdditionalTax = useCallback((index: number) => dispatch({ type: "REMOVE_TAX", index }), [dispatch])
   const updateAdditionalTax = useCallback(
     (index: number, field: keyof AdditionalTax, value: string | number) =>
@@ -492,12 +491,6 @@ export function InvoicePage({ invoiceData, dispatch, currencies }: InvoicePagePr
               />
             ))}
 
-            <div className="w-full flex justify-end">
-              <Button onClick={addAdditionalTax} className="w-full sm:w-auto">
-                + Add Tax
-              </Button>
-            </div>
-
             {invoiceData.additionalFees.map((fee, index) => (
               <FeeRow
                 key={index}
@@ -516,15 +509,6 @@ export function InvoicePage({ invoiceData, dispatch, currencies }: InvoicePagePr
             </div>
           </div>
 
-          <label className="flex items-center space-x-1">
-            <input
-              type="checkbox"
-              checked={invoiceData.taxIncluded}
-              onChange={(e) => dispatch({ type: "UPDATE_FIELD", field: "taxIncluded", value: e.target.checked })}
-              className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-            />
-            <span className="text-gray-600 text-xs sm:text-sm">Taxes are included in price</span>
-          </label>
           <div className="flex justify-between border-t pt-2">
             <ShadyFormInput
               type="text"
