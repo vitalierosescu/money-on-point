@@ -378,7 +378,8 @@ export const getMonthlyRevenue = cache(async (userId: string, year: number): Pro
   }
 
   for (const inv of invoices) {
-    const month = String(new Date(inv.paidAt!).getMonth() + 1).padStart(2, "0")
+    if (!inv.paidAt) continue
+    const month = String(new Date(inv.paidAt).getMonth() + 1).padStart(2, "0")
     months[month].revenue += inv.total
     months[month].subtotal += inv.subtotal ?? 0
     months[month].taxTotal += inv.taxTotal ?? 0
@@ -426,7 +427,7 @@ export const getVatSummary = cache(async (userId: string, year: number): Promise
           lt: new Date(`${year + 1}-01-01`),
         },
       },
-      select: { taxes: true, issuedAt: true },
+      select: { taxAmount: true, issuedAt: true },
     }),
   ])
 
@@ -441,18 +442,16 @@ export const getVatSummary = cache(async (userId: string, year: number): Promise
     month <= 3 ? "Q1" : month <= 6 ? "Q2" : month <= 9 ? "Q3" : "Q4"
 
   for (const inv of invoices) {
-    const q = monthToQuarter(new Date(inv.paidAt!).getMonth() + 1)
+    if (!inv.paidAt) continue
+    const q = monthToQuarter(new Date(inv.paidAt).getMonth() + 1)
     quarters[q].invoiceSubtotal += inv.subtotal ?? 0
     quarters[q].vatCollected += inv.taxTotal ?? 0
   }
 
   for (const exp of expenses) {
-    const q = monthToQuarter(new Date(exp.issuedAt!).getMonth() + 1)
-    const taxesArray = Array.isArray(exp.taxes)
-      ? (exp.taxes as { amount?: number }[])
-      : []
-    const vatAmount = taxesArray.reduce((sum, t) => sum + (t.amount ?? 0), 0)
-    quarters[q].vatPaid += vatAmount
+    if (!exp.issuedAt) continue
+    const q = monthToQuarter(new Date(exp.issuedAt).getMonth() + 1)
+    quarters[q].vatPaid += exp.taxAmount ?? 0
   }
 
   return Object.entries(quarters).map(([quarter, data]) => ({
