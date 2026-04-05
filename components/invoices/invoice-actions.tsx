@@ -2,10 +2,11 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PaymentDialog } from "@/components/invoices/payment-dialog"
+import { SendInvoiceDialog } from "@/components/invoices/send-invoice-dialog"
 import {
-  markInvoiceSentAction,
   markInvoicePaidAction,
   cancelInvoiceAction,
   deleteInvoiceAction,
@@ -39,13 +40,11 @@ export function InvoiceActions({ invoice }: { invoice: InvoiceWithCustomer }) {
           <Link href={`/invoices/${invoice.id}/edit`}>
             <Button variant="outline" className="w-full">Edit</Button>
           </Link>
-          <Button
-            className="w-full"
-            disabled={isLoading}
-            onClick={() => run(() => markInvoiceSentAction(invoice.id))}
-          >
-            Mark as Sent
-          </Button>
+          <SendInvoiceDialog
+            invoiceId={invoice.id}
+            invoiceNumber={invoice.invoiceNumber}
+            defaultEmail={invoice.customer?.email ?? ""}
+          />
           <Button
             variant="destructive"
             className="w-full"
@@ -90,6 +89,17 @@ export function InvoiceActions({ invoice }: { invoice: InvoiceWithCustomer }) {
           >
             Cancel Invoice
           </Button>
+          <SendInvoiceDialog
+            invoiceId={invoice.id}
+            invoiceNumber={invoice.invoiceNumber}
+            defaultEmail={invoice.customer?.email ?? ""}
+            trigger={
+              <Button variant="outline" className="w-full">
+                <Send className="h-4 w-4 mr-2" />
+                Opnieuw verzenden
+              </Button>
+            }
+          />
         </div>
       )
     }
