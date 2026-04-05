@@ -129,7 +129,7 @@ export function InvoiceForm({ customers, currencies, nextInvoiceNumber, settings
         isVatReversed,
         templateData: { billTo },
       })
-      if (result.success) {
+      if (result.success && result.data?.id) {
         window.location.href = `/invoices/${result.data.id}`
       }
     } finally {

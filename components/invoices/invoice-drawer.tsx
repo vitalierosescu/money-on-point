@@ -13,18 +13,27 @@ import {
 } from "@/components/ui/dialog"
 import { InvoicePreview } from "./invoice-preview"
 import { InvoiceStatusBadge } from "./invoice-status-badge"
-import { InvoiceFormData } from "@/app/(app)/apps/invoices/components/invoice-page"
-import { Prisma } from "@/prisma/client"
-import { ExternalLink, Loader2, Pencil, Send, CheckCircle, XCircle, Trash2 } from "lucide-react"
-import Link from "next/link"
+import { SendInvoiceDialog } from "./send-invoice-dialog"
+import { PaymentDialog } from "./payment-dialog"
 import {
-  markInvoiceSentAction,
+  getCustomerBillingEmails,
+  getInvoiceDeliveryMethod,
+  getInvoiceDeliveryMethodLabel,
+  getInvoiceDeliveryStatusLabel,
+  normalizeInvoiceDeliveryStatus,
+} from "@/lib/invoice-delivery"
+import { InvoiceFormData } from "@/lib/invoice-pdf/types"
+import { InvoiceWithCustomer } from "@/models/invoices"
+import { ExternalLink, Loader2, Pencil, Send, CheckCircle, XCircle, Trash2, Download, Copy, Paperclip } from "lucide-react"
+import Link from "next/link"
+import { toast } from "sonner"
+import {
   markInvoicePaidAction,
   cancelInvoiceAction,
   deleteInvoiceAction,
+  downloadInvoicePDFAction,
+  duplicateInvoiceAction,
 } from "@/app/(app)/invoices/actions"
-
-type InvoiceWithCustomer = Prisma.InvoiceGetPayload<{ include: { customer: true } }>
 
 type InvoiceDrawerProps = {
   invoice: InvoiceWithCustomer
@@ -39,10 +48,23 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
   const templateData = invoice.templateData
     ? (invoice.templateData as unknown as InvoiceFormData)
     : null
+  const attachedFiles = Array.isArray(invoice.transaction?.files) ? (invoice.transaction?.files as string[]) : []
+  const deliveryMethod = getInvoiceDeliveryMethod(invoice)
+  const deliveryStatus = normalizeInvoiceDeliveryStatus(invoice.deliveryStatus)
+  const defaultBillingEmail = getCustomerBillingEmails(invoice.customer)[0] ?? ""
 
   function run(action: () => Promise<unknown>) {
     startTransition(async () => {
-      await action()
+      const result = await action()
+      if (
+        result &&
+        typeof result === "object" &&
+        "success" in result &&
+        !(result as { success: boolean }).success
+      ) {
+        toast.error((result as { error?: string }).error ?? "Action failed")
+        return
+      }
       onClose()
     })
   }
@@ -52,7 +74,38 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
     invoice.status === "sent" ||
     invoice.status === "overdue" ||
     invoice.status === "partially_paid"
-  const canCancel = invoice.status !== "cancelled" && invoice.status !== "paid"
+  const canRecordPayment =
+    invoice.status === "sent" ||
+    invoice.status === "overdue" ||
+    invoice.status === "partially_paid"
+  const canCancel =
+    invoice.status === "sent" ||
+    invoice.status === "overdue" ||
+    invoice.status === "partially_paid"
+  const canDuplicate = invoice.status !== "draft"
+  const canDelete = invoice.status === "draft" || invoice.status === "cancelled"
+
+  async function handleDownloadPDF() {
+    if (!templateData) {
+      toast.error("Open en sla de factuur eerst op")
+      return
+    }
+    startTransition(async () => {
+      try {
+        const { base64, filename } = await downloadInvoicePDFAction(invoice.id)
+        const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
+        const blob = new Blob([bytes], { type: "application/pdf" })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = url
+        a.download = filename
+        a.click()
+        URL.revokeObjectURL(url)
+      } catch {
+        toast.error("PDF downloaden mislukt")
+      }
+    })
+  }
 
   return (
     <>
@@ -64,16 +117,17 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
             </SheetTitle>
             <div className="flex items-center gap-2">
               <InvoiceStatusBadge status={invoice.status} />
-              <Link href={`/invoices/${invoice.id}/edit`} onClick={onClose}>
-                <Button variant="ghost" size="icon">
-                  <Pencil className="h-4 w-4" />
-                </Button>
-              </Link>
+              {invoice.status === "draft" && (
+                <Link href={`/invoices/${invoice.id}/edit`} onClick={onClose}>
+                  <Button variant="ghost" size="icon">
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                </Link>
+              )}
             </div>
           </SheetHeader>
 
           <div className="flex flex-1 overflow-hidden">
-            {/* Left: invoice preview */}
             <div className="flex-1 overflow-y-auto border-r bg-gray-50 flex flex-col">
               <div className="flex-1">
                 {templateData ? (
@@ -94,7 +148,6 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
               </div>
             </div>
 
-            {/* Right: details + actions */}
             <div className="w-64 flex flex-col overflow-y-auto">
               <div className="flex-1 p-4 space-y-3 text-sm">
                 <div className="font-semibold text-base">{invoice.customer?.name ?? "—"}</div>
@@ -133,6 +186,19 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
                     </span>
                   </div>
                 )}
+                <div className="flex justify-between py-1 border-b">
+                  <span className="text-muted-foreground">Delivery</span>
+                  <span>{getInvoiceDeliveryMethodLabel(deliveryMethod)}</span>
+                </div>
+                <div className="flex justify-between py-1 border-b">
+                  <span className="text-muted-foreground">Delivery status</span>
+                  <span>{getInvoiceDeliveryStatusLabel(deliveryStatus)}</span>
+                </div>
+                {invoice.providerError && (
+                  <div className="rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                    {invoice.providerError}
+                  </div>
+                )}
               </div>
 
               <div className="p-4 border-t space-y-2">
@@ -142,16 +208,26 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
                   </div>
                 )}
 
-                {canSend && (
-                  <Button
-                    variant="default"
-                    className="w-full"
-                    disabled={isPending}
-                    onClick={() => run(() => markInvoiceSentAction(invoice.id))}
-                  >
-                    <Send className="mr-2 h-4 w-4" />
-                    Mark as sent
-                  </Button>
+                {canSend && deliveryMethod === "email_pdf" && (
+                  <SendInvoiceDialog
+                    invoiceId={invoice.id}
+                    invoiceNumber={invoice.invoiceNumber}
+                    defaultEmail={defaultBillingEmail}
+                    trigger={
+                      <Button variant="default" className="w-full" disabled={isPending}>
+                        <Send className="mr-2 h-4 w-4" />
+                        Verzenden
+                      </Button>
+                    }
+                  />
+                )}
+                {canSend && deliveryMethod === "peppol" && (
+                  <Link href={`/invoices/${invoice.id}`} onClick={onClose}>
+                    <Button variant="default" className="w-full" disabled={isPending}>
+                      <Send className="mr-2 h-4 w-4" />
+                      Open PEPPOL actions
+                    </Button>
+                  </Link>
                 )}
 
                 {canMarkPaid && (
@@ -166,12 +242,61 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
                   </Button>
                 )}
 
-                <Link href={`/invoices/${invoice.id}/edit`} onClick={onClose}>
-                  <Button variant="outline" className="w-full" disabled={isPending}>
-                    <Pencil className="mr-2 h-4 w-4" />
-                    Edit
+                {canRecordPayment && (
+                  <PaymentDialog
+                    invoiceId={invoice.id}
+                    remainingAmount={invoice.total - invoice.paidAmount}
+                    currency={invoice.currency}
+                    trigger={
+                      <Button variant="outline" className="w-full" disabled={isPending}>
+                        <CheckCircle className="mr-2 h-4 w-4" />
+                        Betaling registreren
+                      </Button>
+                    }
+                  />
+                )}
+
+                {invoice.status === "draft" && (
+                  <Link href={`/invoices/${invoice.id}/edit`} onClick={onClose}>
+                    <Button variant="outline" className="w-full" disabled={isPending}>
+                      <Pencil className="mr-2 h-4 w-4" />
+                      Edit
+                    </Button>
+                  </Link>
+                )}
+
+                {templateData && (
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    disabled={isPending}
+                    onClick={handleDownloadPDF}
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    Download PDF
                   </Button>
-                </Link>
+                )}
+
+                {attachedFiles.length > 0 && (
+                  <Link href={`/invoices/${invoice.id}#documents`} onClick={onClose}>
+                    <Button variant="outline" className="w-full" disabled={isPending}>
+                      <Paperclip className="mr-2 h-4 w-4" />
+                      {attachedFiles.length} {attachedFiles.length === 1 ? "document" : "documents"}
+                    </Button>
+                  </Link>
+                )}
+
+                {canDuplicate && (
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    disabled={isPending}
+                    onClick={() => run(() => duplicateInvoiceAction(invoice.id))}
+                  >
+                    <Copy className="mr-2 h-4 w-4" />
+                    Dupliceren
+                  </Button>
+                )}
 
                 {canCancel && (
                   <Button
@@ -185,47 +310,51 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
                   </Button>
                 )}
 
-                <Button
-                  variant="destructive"
-                  className="w-full"
-                  disabled={isPending}
-                  onClick={() => setShowDeleteConfirm(true)}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Delete
-                </Button>
+                {canDelete && (
+                  <Button
+                    variant="destructive"
+                    className="w-full"
+                    disabled={isPending}
+                    onClick={() => setShowDeleteConfirm(true)}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete
+                  </Button>
+                )}
               </div>
             </div>
           </div>
         </SheetContent>
       </Sheet>
 
-      <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete invoice?</DialogTitle>
-            <DialogDescription>
-              This will permanently delete invoice {invoice.invoiceNumber}. This action cannot be
-              undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" disabled={isPending} onClick={() => setShowDeleteConfirm(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={isPending}
-              onClick={() => {
-                setShowDeleteConfirm(false)
-                run(() => deleteInvoiceAction(invoice.id))
-              }}
-            >
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {canDelete && (
+        <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete invoice?</DialogTitle>
+              <DialogDescription>
+                This will permanently delete invoice {invoice.invoiceNumber}. This action cannot be
+                undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" disabled={isPending} onClick={() => setShowDeleteConfirm(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={isPending}
+                onClick={() => {
+                  setShowDeleteConfirm(false)
+                  run(() => deleteInvoiceAction(invoice.id))
+                }}
+              >
+                Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </>
   )
 }
