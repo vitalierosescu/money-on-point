@@ -135,20 +135,26 @@ export function ReportsTabs({
 
         {/* CASHFLOW TAB */}
         <TabsContent value="cashflow" className="space-y-6 pt-4">
-          <div className="rounded-lg border p-5">
-            <p className="text-sm font-medium mb-4">Inkomsten vs Uitgaven {year}</p>
-            <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={cashflowData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="period" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `€${v}`} />
-                <Tooltip formatter={(v: number) => fmt(v, defaultCurrency)} />
-                <Legend />
-                <Line type="monotone" dataKey="Inkomsten" stroke="#18181b" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="Uitgaven" stroke="#ef4444" strokeWidth={2} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+          {cashflowData.length === 0 ? (
+            <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">
+              Geen cashflow data voor {year}.
+            </div>
+          ) : (
+            <div className="rounded-lg border p-5">
+              <p className="text-sm font-medium mb-4">Inkomsten vs Uitgaven {year}</p>
+              <ResponsiveContainer width="100%" height={280}>
+                <LineChart data={cashflowData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="period" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `€${v}`} />
+                  <Tooltip formatter={(v: number) => fmt(v, defaultCurrency)} />
+                  <Legend />
+                  <Line type="monotone" dataKey="Inkomsten" stroke="#18181b" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="Uitgaven" stroke="#ef4444" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
           <div>
             <a
               href={`/export/expenses?year=${year}`}
@@ -247,7 +253,7 @@ export function ReportsTabs({
                     <td className="px-3 py-3 text-right font-mono tabular-nums text-muted-foreground">{fmt(q.vatPaid, defaultCurrency)}</td>
                     <td
                       className={`px-3 py-3 text-right font-mono tabular-nums font-semibold ${
-                        q.netVat > 0 ? "" : "text-emerald-700"
+                        q.netVat <= 0 ? "text-emerald-700" : ""
                       }`}
                     >
                       {fmt(q.netVat, defaultCurrency)}

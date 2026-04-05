@@ -1,6 +1,5 @@
 // app/(app)/reports/page.tsx
 import type { Metadata } from "next"
-import { Suspense } from "react"
 import { getCurrentUser } from "@/lib/auth"
 import { ReportsTabs } from "@/components/reports/reports-tabs"
 import { getMonthlyRevenue, getVatSummary, getTimeSeriesStats } from "@/models/stats"
@@ -39,16 +38,14 @@ export default async function ReportsPage({
           <span className="text-3xl font-bold tracking-tight">Reports</span>
         </h2>
       </header>
-      <Suspense fallback={null}>
-        <ReportsTabs
-          year={year}
-          monthlyRevenue={monthlyRevenue}
-          vatSummary={vatSummary}
-          timeSeries={timeSeries}
-          outstandingInvoices={outstandingInvoices}
-          defaultCurrency={defaultCurrency}
-        />
-      </Suspense>
+      <ReportsTabs
+        year={year}
+        monthlyRevenue={monthlyRevenue}
+        vatSummary={vatSummary}
+        timeSeries={timeSeries}
+        outstandingInvoices={outstandingInvoices}
+        defaultCurrency={defaultCurrency}
+      />
     </div>
   )
 }
