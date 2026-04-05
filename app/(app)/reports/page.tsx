@@ -32,7 +32,7 @@ export default async function ReportsPage({
   ])
 
   return (
-    <div className="space-y-6">
+    <>
       <header className="flex items-center justify-between gap-2 mb-8">
         <h2 className="flex flex-row gap-3 md:gap-4 items-baseline">
           <span className="text-3xl font-bold tracking-tight">Reports</span>
@@ -46,6 +46,6 @@ export default async function ReportsPage({
         outstandingInvoices={outstandingInvoices}
         defaultCurrency={defaultCurrency}
       />
-    </div>
+    </>
   )
 }
