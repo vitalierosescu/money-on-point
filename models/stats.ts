@@ -349,3 +349,117 @@ export const getDetailedTimeSeriesStats = cache(
       .sort((a, b) => a.date.getTime() - b.date.getTime())
   }
 )
+
+export type MonthlyRevenueData = {
+  month: string       // "01" to "12"
+  label: string       // "jan", "feb", etc. (nl-BE short month name)
+  revenue: number     // invoice total in currency units (after /100)
+  subtotal: number    // excl. VAT
+  taxTotal: number    // VAT amount
+  count: number       // number of paid invoices in this month
+}
+
+export const getMonthlyRevenue = cache(async (userId: string, year: number): Promise<MonthlyRevenueData[]> => {
+  const invoices = await prisma.invoice.findMany({
+    where: {
+      userId,
+      status: "paid",
+      paidAt: {
+        gte: new Date(`${year}-01-01`),
+        lt: new Date(`${year + 1}-01-01`),
+      },
+    },
+    select: { total: true, subtotal: true, taxTotal: true, paidAt: true },
+  })
+
+  const months: Record<string, { revenue: number; subtotal: number; taxTotal: number; count: number }> = {}
+  for (let m = 1; m <= 12; m++) {
+    months[String(m).padStart(2, "0")] = { revenue: 0, subtotal: 0, taxTotal: 0, count: 0 }
+  }
+
+  for (const inv of invoices) {
+    const month = String(new Date(inv.paidAt!).getMonth() + 1).padStart(2, "0")
+    months[month].revenue += inv.total
+    months[month].subtotal += inv.subtotal ?? 0
+    months[month].taxTotal += inv.taxTotal ?? 0
+    months[month].count++
+  }
+
+  return Object.entries(months).map(([month, data]) => ({
+    month,
+    label: new Intl.DateTimeFormat("nl-BE", { month: "short" }).format(new Date(`${year}-${month}-01`)),
+    revenue: data.revenue / 100,
+    subtotal: data.subtotal / 100,
+    taxTotal: data.taxTotal / 100,
+    count: data.count,
+  }))
+})
+
+export type VatQuarterData = {
+  quarter: string          // "Q1" | "Q2" | "Q3" | "Q4"
+  invoiceSubtotal: number  // revenue excl. VAT (from paid invoices)
+  vatCollected: number     // VAT billed to customers
+  vatPaid: number          // VAT on expenses (deductible input VAT)
+  netVat: number           // vatCollected - vatPaid
+}
+
+export const getVatSummary = cache(async (userId: string, year: number): Promise<VatQuarterData[]> => {
+  const [invoices, expenses] = await Promise.all([
+    prisma.invoice.findMany({
+      where: {
+        userId,
+        status: "paid",
+        paidAt: {
+          gte: new Date(`${year}-01-01`),
+          lt: new Date(`${year + 1}-01-01`),
+        },
+      },
+      select: { subtotal: true, taxTotal: true, paidAt: true },
+    }),
+    prisma.transaction.findMany({
+      where: {
+        userId,
+        type: "expense",
+        status: "paid",
+        issuedAt: {
+          gte: new Date(`${year}-01-01`),
+          lt: new Date(`${year + 1}-01-01`),
+        },
+      },
+      select: { taxes: true, issuedAt: true },
+    }),
+  ])
+
+  const quarters: Record<string, { invoiceSubtotal: number; vatCollected: number; vatPaid: number }> = {
+    Q1: { invoiceSubtotal: 0, vatCollected: 0, vatPaid: 0 },
+    Q2: { invoiceSubtotal: 0, vatCollected: 0, vatPaid: 0 },
+    Q3: { invoiceSubtotal: 0, vatCollected: 0, vatPaid: 0 },
+    Q4: { invoiceSubtotal: 0, vatCollected: 0, vatPaid: 0 },
+  }
+
+  const monthToQuarter = (month: number) =>
+    month <= 3 ? "Q1" : month <= 6 ? "Q2" : month <= 9 ? "Q3" : "Q4"
+
+  for (const inv of invoices) {
+    const q = monthToQuarter(new Date(inv.paidAt!).getMonth() + 1)
+    quarters[q].invoiceSubtotal += inv.subtotal ?? 0
+    quarters[q].vatCollected += inv.taxTotal ?? 0
+  }
+
+  for (const exp of expenses) {
+    const q = monthToQuarter(new Date(exp.issuedAt!).getMonth() + 1)
+    const taxesArray = Array.isArray(exp.taxes)
+      ? (exp.taxes as { amount?: number }[])
+      : []
+    const vatAmount = taxesArray.reduce((sum, t) => sum + (t.amount ?? 0), 0)
+    quarters[q].vatPaid += vatAmount
+  }
+
+  return Object.entries(quarters).map(([quarter, data]) => ({
+    quarter,
+    invoiceSubtotal: data.invoiceSubtotal / 100,
+    vatCollected: data.vatCollected / 100,
+    vatPaid: data.vatPaid / 100,
+    netVat: (data.vatCollected - data.vatPaid) / 100,
+  }))
+})

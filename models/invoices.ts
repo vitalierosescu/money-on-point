@@ -181,3 +181,14 @@ export const getInvoiceCountByCustomer = cache(
     return prisma.invoice.count({ where: { customerId } })
   }
 )
+
+export const getOutstandingInvoices = cache(async (userId: string): Promise<InvoiceWithCustomer[]> => {
+  return prisma.invoice.findMany({
+    where: {
+      userId,
+      status: { in: ["sent", "overdue", "partially_paid"] },
+    },
+    include: { customer: true, payments: true },
+    orderBy: { dueDate: "asc" },
+  })
+})
