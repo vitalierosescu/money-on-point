@@ -96,7 +96,7 @@ export function ImportCSVTable({ fields }: { fields: Field[] }) {
     <>
       {csvData.length === 0 && (
         <div className="flex flex-col items-center justify-center gap-2 h-full min-h-[400px]">
-          <p className="text-muted-foreground">Upload your CSV file to import transactions</p>
+          <p className="text-muted-foreground">Upload your CSV file to import expenses</p>
           <div className="flex flex-row gap-5 mt-8">
             <div>
               <input type="file" accept=".csv" className="hidden" id="csv-file" onChange={handleFileChange} />
@@ -123,7 +123,7 @@ export function ImportCSVTable({ fields }: { fields: Field[] }) {
                   </>
                 ) : (
                   <>
-                    <Play /> Import {csvData.length} transactions
+                    <Play /> Import {csvData.length} expenses
                   </>
                 )}
               </Button>
