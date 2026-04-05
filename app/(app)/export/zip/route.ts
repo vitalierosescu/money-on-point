@@ -1,5 +1,6 @@
 import { getCurrentUser } from "@/lib/auth"
 import { prisma } from "@/lib/db"
+import { parseYearParam } from "@/lib/parse-year-param"
 import { generateInvoicePDF } from "@/app/(app)/apps/invoices/actions"
 import type { InvoiceFormData } from "@/app/(app)/apps/invoices/components/invoice-page"
 import JSZip from "jszip"
@@ -7,11 +8,7 @@ import JSZip from "jszip"
 export async function GET(request: Request) {
   const user = await getCurrentUser()
   const url = new URL(request.url)
-  const yearParam = url.searchParams.get("year") ?? ""
-  const parsed = parseInt(yearParam, 10)
-  const year = Number.isFinite(parsed) && parsed >= 2000 && parsed <= 2100
-    ? parsed
-    : new Date().getFullYear()
+  const year = parseYearParam(url.searchParams.get("year"))
 
   const invoices = await prisma.invoice.findMany({
     where: {

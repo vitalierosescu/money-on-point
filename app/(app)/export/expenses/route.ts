@@ -1,16 +1,13 @@
 import { getCurrentUser } from "@/lib/auth"
 import { prisma } from "@/lib/db"
+import { parseYearParam } from "@/lib/parse-year-param"
 import { format as formatCsv } from "@fast-csv/format"
 import { PassThrough } from "stream"
 
 export async function GET(request: Request) {
   const user = await getCurrentUser()
   const url = new URL(request.url)
-  const yearParam = url.searchParams.get("year") ?? ""
-  const parsed = parseInt(yearParam, 10)
-  const year = Number.isFinite(parsed) && parsed >= 2000 && parsed <= 2100
-    ? parsed
-    : new Date().getFullYear()
+  const year = parseYearParam(url.searchParams.get("year"))
 
   const expenses = await prisma.transaction.findMany({
     where: {
@@ -49,7 +46,7 @@ export async function GET(request: Request) {
   for await (const chunk of pass) {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
   }
-  const csv = Buffer.concat(chunks)
+  const csv = Buffer.concat([Buffer.from("\xEF\xBB\xBF"), ...chunks])
 
   return new Response(csv, {
     headers: {
