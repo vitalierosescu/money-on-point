@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useTransition, useEffect } from "react"
 import {
   Dialog,
   DialogContent,
@@ -34,8 +34,12 @@ export function SendInvoiceDialog({
   const [email, setEmail] = useState(defaultEmail)
   const [isPending, startTransition] = useTransition()
 
+  useEffect(() => {
+    setEmail(defaultEmail)
+  }, [defaultEmail])
+
   function handleSend() {
-    if (!email) return
+    if (!email || !email.includes("@")) return
     startTransition(async () => {
       try {
         await sendInvoiceEmailAction(invoiceId, email)
@@ -48,7 +52,7 @@ export function SendInvoiceDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(next) => { if (!isPending) setOpen(next) }}>
       <DialogTrigger asChild>
         {trigger ?? (
           <Button className="w-full">
