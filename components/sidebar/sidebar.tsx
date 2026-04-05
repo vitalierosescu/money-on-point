@@ -18,12 +18,11 @@ import {
 } from "@/components/ui/sidebar"
 import { UserProfile } from "@/lib/auth"
 import config from "@/lib/config"
-import { ClockArrowUp, CreditCard, Gift, House, Import, LayoutDashboard, Receipt, Settings, Upload, Users } from "lucide-react"
+import { BarChart3, ClockArrowUp, CreditCard, Gift, House, Import, LayoutDashboard, Receipt, Settings, Upload, Users } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useEffect } from "react"
-import { ColoredText } from "../ui/colored-text"
 import { Blinker } from "./blinker"
 import { SidebarMenuItemWithHighlight } from "./sidebar-item"
 import SidebarUser from "./sidebar-user"
@@ -50,18 +49,16 @@ export function AppSidebar({
     <>
       <Sidebar variant="inset" collapsible="icon">
         <SidebarHeader>
-          <Link href="/" className="flex items-center gap-2">
-            <Image src="/logo/256.png" alt="Logo" className="h-10 w-10 rounded-lg" width={40} height={40} />
-            <div className="grid flex-1 text-left leading-tight">
-              <span className="truncate font-semibold text-lg">
-                <ColoredText>{config.app.title}</ColoredText>
-              </span>
-            </div>
+          <Link href="/" className="flex items-center gap-2.5 px-1">
+            <Image src="/logo/256.png" alt="Logo" className="h-8 w-8 rounded-md" width={32} height={32} />
+            <span className="truncate font-semibold text-sm tracking-tight text-sidebar-foreground">
+              {config.app.title}
+            </span>
           </Link>
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
-            <UploadButton className="w-full mt-4 mb-2">
+            <UploadButton className="w-full mt-3 mb-1" variant="outline">
               <Upload className="h-4 w-4" />
               {open ? <span>Upload</span> : ""}
             </UploadButton>
@@ -130,6 +127,16 @@ export function AppSidebar({
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItemWithHighlight>
+
+                <SidebarMenuItemWithHighlight href="/reports">
+                  <SidebarMenuButton asChild>
+                    <Link href="/reports">
+                      <BarChart3 />
+                      <span>Reports</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItemWithHighlight>
+
                 <SidebarMenuItemWithHighlight href="/settings">
                   <SidebarMenuButton asChild>
                     <Link href="/settings">
