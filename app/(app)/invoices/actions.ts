@@ -182,7 +182,7 @@ export async function sendInvoiceEmailAction(invoiceId: string, recipientEmail: 
     ],
   })
 
-  if (error) throw new Error(`Email sending failed: ${error.message}`)
+  if (error) throw new Error(`Email sending failed: ${String(error)}`)
 
   await prisma.invoice.update({
     where: { id: invoiceId },
