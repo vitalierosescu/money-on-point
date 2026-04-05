@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
+
 import { Category, Transaction } from "@/prisma/client"
 import {
   markExpensePaidAction,
@@ -18,19 +18,13 @@ import {
   deleteExpenseAction,
 } from "@/app/(app)/expenses/actions"
 import { Loader2, Pencil, Copy, CreditCard, Trash2, Download, CheckCircle, FileX } from "lucide-react"
+import { EXPENSE_STATUS_LABELS } from "@/lib/expense-status"
 
 type ExpenseDrawerProps = {
   expense: Transaction & { category?: Category | null }
   open: boolean
   onClose: () => void
   categories: Category[]
-}
-
-const STATUS_LABELS: Record<string, { label: string; className: string }> = {
-  unpaid:  { label: "Nieuw",         className: "bg-yellow-100 text-yellow-800" },
-  to_pay:  { label: "Te betalen",    className: "bg-blue-100 text-blue-800" },
-  paid:    { label: "Betaald",       className: "bg-green-100 text-green-800" },
-  overdue: { label: "Achterstallig", className: "bg-red-100 text-red-800" },
 }
 
 export function ExpenseDrawer({ expense, open, onClose, categories }: ExpenseDrawerProps) {
@@ -44,10 +38,15 @@ export function ExpenseDrawer({ expense, open, onClose, categories }: ExpenseDra
   )
   const [categoryCode, setCategoryCode] = useState(expense.categoryCode ?? "")
   const [note, setNote] = useState(expense.note ?? "")
+  const [taxAmount, setTaxAmount] = useState<string>(
+    expense.taxAmount !== null && expense.taxAmount !== undefined
+      ? (expense.taxAmount / 100).toFixed(2)
+      : ""
+  )
 
   const files = Array.isArray(expense.files) ? (expense.files as string[]) : []
   const status = expense.status ?? "unpaid"
-  const statusInfo = STATUS_LABELS[status] ?? STATUS_LABELS.unpaid
+  const statusInfo = EXPENSE_STATUS_LABELS[status] ?? EXPENSE_STATUS_LABELS.unpaid
 
   function run(action: () => Promise<{ success: boolean }>) {
     startTransition(async () => {
@@ -64,6 +63,7 @@ export function ExpenseDrawer({ expense, open, onClose, categories }: ExpenseDra
         dueDate: dueDate ? new Date(dueDate) : null,
         categoryCode: categoryCode || null,
         note: note || null,
+        taxAmount: taxAmount !== "" ? Math.round(parseFloat(taxAmount) * 100) : null,
       })
       setIsEditing(false)
     })
@@ -77,7 +77,9 @@ export function ExpenseDrawer({ expense, open, onClose, categories }: ExpenseDra
             {expense.merchant ?? expense.name ?? "Expense"}
           </SheetTitle>
           <div className="flex items-center gap-2">
-            <Badge className={statusInfo.className}>{statusInfo.label}</Badge>
+            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusInfo.className}`}>
+              {statusInfo.label}
+            </span>
             {!isEditing && (
               <Button variant="ghost" size="icon" onClick={() => setIsEditing(true)}>
                 <Pencil className="h-4 w-4" />
@@ -86,7 +88,7 @@ export function ExpenseDrawer({ expense, open, onClose, categories }: ExpenseDra
           </div>
         </SheetHeader>
 
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex min-h-0 flex-1 overflow-hidden">
           {/* Left panel: details */}
           <div className="w-72 border-r flex flex-col overflow-y-auto">
             <div className="flex-1 p-4 space-y-4">
@@ -103,6 +105,17 @@ export function ExpenseDrawer({ expense, open, onClose, categories }: ExpenseDra
                       step="0.01"
                       value={total}
                       onChange={(e) => setTotal(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground uppercase">BTW / Belasting</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={taxAmount}
+                      onChange={(e) => setTaxAmount(e.target.value)}
+                      placeholder="0.00"
                     />
                   </div>
                   <div className="space-y-1">
@@ -139,6 +152,12 @@ export function ExpenseDrawer({ expense, open, onClose, categories }: ExpenseDra
                         expense.total !== null
                           ? `${expense.currencyCode ?? ""} ${(expense.total / 100).toFixed(2)}`
                           : "—",
+                      ],
+                      [
+                        "BTW/Belasting",
+                        expense.taxAmount != null
+                          ? `${expense.currencyCode ?? ""} ${(expense.taxAmount / 100).toFixed(2)}`
+                          : "–",
                       ],
                       [
                         "Date",
@@ -268,16 +287,15 @@ export function ExpenseDrawer({ expense, open, onClose, categories }: ExpenseDra
           </div>
 
           {/* Right panel: file preview */}
-          <div className="flex-1 bg-muted/30 flex flex-col items-center justify-center p-4 gap-4 overflow-y-auto">
+          <div className="flex-1 min-h-0 bg-muted/30 p-3 overflow-hidden">
             {files.length > 0 ? (
               files.map((fileId) => (
-                <div key={fileId} className="w-full max-w-2xl">
-                  <iframe
-                    src={`/files/preview/${fileId}`}
-                    className="w-full h-[700px] border rounded-lg bg-white"
-                    title="Document preview"
-                  />
-                </div>
+                <iframe
+                  key={fileId}
+                  src={`/files/preview/${fileId}`}
+                  className="w-full h-full border rounded-lg bg-white"
+                  title="Document preview"
+                />
               ))
             ) : (
               <div className="text-center text-muted-foreground">

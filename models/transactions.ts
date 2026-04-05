@@ -25,6 +25,7 @@ export type TransactionData = {
   status?: string | null
   dueDate?: Date | string | null
   linkedExpenseId?: string | null
+  taxAmount?: number | null
   [key: string]: unknown
 }
 

@@ -39,6 +39,7 @@ export async function updateExpenseAction(
     note?: string | null
     name?: string | null
     description?: string | null
+    taxAmount?: number | null
   }
 ) {
   const user = await getCurrentUser()
@@ -106,6 +107,26 @@ export async function deleteExpenseAction(id: string) {
   const user = await getCurrentUser()
   await prisma.transaction.delete({
     where: { id, userId: user.id },
+  })
+  revalidatePath("/expenses")
+  return { success: true }
+}
+
+export async function bulkMarkExpensePaidAction(ids: string[]) {
+  const user = await getCurrentUser()
+  await prisma.transaction.updateMany({
+    where: { id: { in: ids }, userId: user.id },
+    data: { status: "paid" },
+  })
+  revalidatePath("/expenses")
+  return { success: true }
+}
+
+export async function bulkMarkExpenseToPayAction(ids: string[]) {
+  const user = await getCurrentUser()
+  await prisma.transaction.updateMany({
+    where: { id: { in: ids }, userId: user.id },
+    data: { status: "to_pay" },
   })
   revalidatePath("/expenses")
   return { success: true }
