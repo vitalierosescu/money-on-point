@@ -185,10 +185,11 @@ export async function sendInvoiceEmailAction(invoiceId: string, recipientEmail: 
   if (error) throw new Error(`Email sending failed: ${String(error)}`)
 
   await prisma.invoice.update({
-    where: { id: invoiceId },
+    where: { id: invoiceId, userId: user.id },
     data: { status: "sent" },
   })
 
   revalidatePath(`/invoices/${invoiceId}`)
   revalidatePath("/invoices")
+  return { success: true }
 }
