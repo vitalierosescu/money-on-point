@@ -177,6 +177,7 @@ model Transaction {
   description           String?
   merchant              String?
   total                 Int?
+  taxAmount             Int?      @map("tax_amount")
   currencyCode          String?   @map("currency_code")
   convertedTotal        Int?      @map("converted_total")
   convertedCurrencyCode String?   @map("converted_currency_code")
