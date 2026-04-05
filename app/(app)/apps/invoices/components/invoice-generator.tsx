@@ -20,6 +20,17 @@ import defaultTemplates, { InvoiceTemplate } from "../default-templates"
 import { InvoiceAppData } from "../page"
 import { InvoiceFormData, InvoicePage } from "./invoice-page"
 
+function recalculateTaxAmounts(state: InvoiceFormData): InvoiceFormData {
+  const subtotal = state.items.reduce((sum, item) => sum + item.subtotal, 0)
+  return {
+    ...state,
+    additionalTaxes: state.additionalTaxes.map((tax) => ({
+      ...tax,
+      amount: (subtotal * tax.rate) / 100,
+    })),
+  }
+}
+
 function invoiceFormReducer(state: InvoiceFormData, action: any): InvoiceFormData {
   switch (action.type) {
     case "SET_FORM":
@@ -27,31 +38,30 @@ function invoiceFormReducer(state: InvoiceFormData, action: any): InvoiceFormDat
     case "UPDATE_FIELD":
       return { ...state, [action.field]: action.value }
     case "ADD_ITEM":
-      return {
+      return recalculateTaxAmounts({
         ...state,
         items: [
           ...state.items,
           { name: "", subtitle: "", showSubtitle: false, quantity: 1, unitPrice: 0, subtotal: 0 },
         ],
-      }
+      })
     case "UPDATE_ITEM": {
       const items = [...state.items]
       items[action.index] = { ...items[action.index], [action.field]: action.value }
       if (action.field === "quantity" || action.field === "unitPrice") {
         items[action.index].subtotal = Number(items[action.index].quantity) * Number(items[action.index].unitPrice)
       }
-      return { ...state, items }
+      return recalculateTaxAmounts({ ...state, items })
     }
     case "REMOVE_ITEM":
-      return { ...state, items: state.items.filter((_, i) => i !== action.index) }
+      return recalculateTaxAmounts({ ...state, items: state.items.filter((_, i) => i !== action.index) })
     case "ADD_TAX":
       return { ...state, additionalTaxes: [...state.additionalTaxes, { name: "", rate: 0, amount: 0 }] }
     case "UPDATE_TAX": {
       const taxes = [...state.additionalTaxes]
       taxes[action.index] = { ...taxes[action.index], [action.field]: action.value }
       if (action.field === "rate") {
-        const subtotal = state.items.reduce((sum, item) => sum + item.subtotal, 0)
-        taxes[action.index].amount = (subtotal * Number(action.value)) / 100
+        return recalculateTaxAmounts({ ...state, additionalTaxes: taxes })
       }
       return { ...state, additionalTaxes: taxes }
     }
@@ -96,7 +106,7 @@ export function InvoiceGenerator({
 }) {
   const templates: InvoiceTemplate[] = useMemo(
     () => [...defaultTemplates(user, settings), ...(appData?.templates || [])],
-    [appData]
+    [appData, user, settings]
   )
 
   const initialFormData = useMemo(() => {
@@ -133,11 +143,11 @@ export function InvoiceGenerator({
     setIsPdfLoading(true)
 
     try {
-      if (formData.businessLogo) {
-        formData.businessLogo = await fetchAsBase64(formData.businessLogo)
-      }
+      const data = formData.businessLogo
+        ? { ...formData, businessLogo: await fetchAsBase64(formData.businessLogo) }
+        : formData
 
-      const pdfBuffer = await generateInvoicePDF(formData)
+      const pdfBuffer = await generateInvoicePDF(data)
 
       // Create a blob from the buffer
       const blob = new Blob([pdfBuffer], { type: "application/pdf" })
@@ -320,13 +330,12 @@ export function InvoiceGenerator({
     setIsSavingTransaction(true)
 
     try {
-      if (formData.businessLogo) {
-        formData.businessLogo = await fetchAsBase64(formData.businessLogo)
-      }
+      const data = formData.businessLogo
+        ? { ...formData, businessLogo: await fetchAsBase64(formData.businessLogo) }
+        : formData
 
-      const result = await saveInvoiceAsTransactionAction(formData)
+      const result = await saveInvoiceAsTransactionAction(data)
       if (result.success && result.data?.id) {
-        console.log("SUCCESS! REDIRECTING TO TRANSACTION", result.data?.id)
         startTransition(() => {
           router.push(`/invoices`)
         })
@@ -343,35 +352,33 @@ export function InvoiceGenerator({
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Templates Section - only shown when not in create mode */}
-      {mode !== "create" && (
-        <div className="py-4 flex overflow-x-auto gap-2">
-          {templates.map((template) => (
-            <div key={template.name} className="relative group">
+      {/* Templates Section */}
+      <div className="py-4 flex overflow-x-auto gap-2">
+        {templates.map((template) => (
+          <div key={template.name} className="relative group">
+            <Button
+              variant={selectedTemplate === template.name ? "default" : "outline"}
+              className={`
+                  whitespace-nowrap p-4
+                  ${selectedTemplate === template.name ? "bg-black hover:bg-gray-900" : "border-gray-300 text-gray-700 hover:bg-gray-100"}
+                `}
+              onClick={() => handleTemplateSelect(template.name)}
+            >
+              {template.name}
+            </Button>
+            {template.id && (
               <Button
-                variant={selectedTemplate === template.name ? "default" : "outline"}
-                className={`
-                    whitespace-nowrap p-4
-                    ${selectedTemplate === template.name ? "bg-black hover:bg-gray-900" : "border-gray-300 text-gray-700 hover:bg-gray-100"}
-                  `}
-                onClick={() => handleTemplateSelect(template.name)}
+                variant="destructive"
+                size="icon"
+                className="absolute -top-2 -right-2 h-5 w-5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={(e) => handleDeleteTemplate(template.id, e)}
               >
-                {template.name}
+                <X className="h-3 w-3" />
               </Button>
-              {template.id && (
-                <Button
-                  variant="destructive"
-                  size="icon"
-                  className="absolute -top-2 -right-2 h-5 w-5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={(e) => handleDeleteTemplate(template.id, e)}
-                >
-                  <X className="h-3 w-3" />
-                </Button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+            )}
+          </div>
+        ))}
+      </div>
 
       {/* Customer Picker - shown in create and edit mode */}
       {(mode === "create" || mode === "edit") && customers && (
@@ -404,100 +411,32 @@ export function InvoiceGenerator({
             )}
           </Button>
           {mode !== "create" && (
-            <>
-              <Button variant="secondary" onClick={() => setIsTemplateDialogOpen(true)}>
-                <TextSelect />
-                Make a Template
-              </Button>
-              <Button variant="secondary" onClick={handleSaveAsTransaction} disabled={isSavingTransaction}>
-                {isSavingTransaction ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="mr-2" />
-                    Save as Transaction
-                  </>
-                )}
-              </Button>
-            </>
+            <Button variant="secondary" onClick={() => setIsTemplateDialogOpen(true)}>
+              <TextSelect />
+              Make a Template
+            </Button>
           )}
-          {mode === "create" && (
-            <>
-              <Button
-                variant="secondary"
-                onClick={() => handleSaveInvoice("draft")}
-                disabled={isSavingInvoice}
-              >
-                {isSavingInvoice ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="mr-2" />
-                    Save as Draft
-                  </>
-                )}
-              </Button>
-              <Button
-                onClick={() => handleSaveInvoice("sent")}
-                disabled={isSavingInvoice}
-              >
-                {isSavingInvoice ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="mr-2" />
-                    Save & Send
-                  </>
-                )}
-              </Button>
-            </>
-          )}
-          {mode === "edit" && (
-            <>
-              <Button
-                variant="secondary"
-                onClick={() => handleUpdateInvoice("draft")}
-                disabled={isSavingInvoice}
-              >
-                {isSavingInvoice ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="mr-2" />
-                    Save as Draft
-                  </>
-                )}
-              </Button>
-              <Button
-                onClick={() => handleUpdateInvoice("sent")}
-                disabled={isSavingInvoice}
-              >
-                {isSavingInvoice ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="mr-2" />
-                    Save & Send
-                  </>
-                )}
-              </Button>
-            </>
-          )}
+          {(mode === "create" || mode === "edit") && (() => {
+            const onSave = mode === "create" ? handleSaveInvoice : handleUpdateInvoice
+            return (
+              <>
+                <Button variant="secondary" onClick={() => onSave("draft")} disabled={isSavingInvoice}>
+                  {isSavingInvoice ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving...</>
+                  ) : (
+                    <><Save className="mr-2" />Save as Draft</>
+                  )}
+                </Button>
+                <Button onClick={() => onSave("sent")} disabled={isSavingInvoice}>
+                  {isSavingInvoice ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving...</>
+                  ) : (
+                    <><Save className="mr-2" />Save & Send</>
+                  )}
+                </Button>
+              </>
+            )
+          })()}
         </div>
       </div>
 
