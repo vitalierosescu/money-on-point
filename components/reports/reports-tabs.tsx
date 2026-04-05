@@ -1,7 +1,7 @@
 // components/reports/reports-tabs.tsx
 "use client"
 
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 interface ReportsTabsProps {
@@ -12,12 +12,9 @@ interface ReportsTabsProps {
 
 export function ReportsTabs({ year, userId: _userId, defaultCurrency: _defaultCurrency }: ReportsTabsProps) {
   const router = useRouter()
-  const searchParams = useSearchParams()
 
   function setYear(y: number) {
-    const params = new URLSearchParams(searchParams.toString())
-    params.set("year", String(y))
-    router.push(`/reports?${params.toString()}`)
+    router.push(`/reports?year=${y}`)
   }
 
   const currentYear = new Date().getFullYear()
