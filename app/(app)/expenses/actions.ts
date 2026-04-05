@@ -91,6 +91,9 @@ export async function createCreditNoteAction(
       extra: extra ?? undefined,
       total: original.total !== null ? -Math.abs(original.total) : null,
       convertedTotal: original.convertedTotal !== null ? -Math.abs(original.convertedTotal) : null,
+      taxAmount: original.taxAmount !== null && original.taxAmount !== undefined
+        ? -Math.abs(original.taxAmount)
+        : null,
       status: "unpaid",
       linkedExpenseId: id,
       files: [],
