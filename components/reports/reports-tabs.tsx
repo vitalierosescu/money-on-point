@@ -112,7 +112,7 @@ export function ReportsTabs({
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="label" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `€${v}`} />
-                <Tooltip formatter={(v: number) => fmt(v, defaultCurrency)} />
+                <Tooltip formatter={(v) => fmt(Number(v), defaultCurrency)} />
                 <Bar dataKey="revenue" name="Omzet" fill="#18181b" radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -147,7 +147,7 @@ export function ReportsTabs({
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis dataKey="period" tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `€${v}`} />
-                  <Tooltip formatter={(v: number) => fmt(v, defaultCurrency)} />
+                  <Tooltip formatter={(v) => fmt(Number(v), defaultCurrency)} />
                   <Legend />
                   <Line type="monotone" dataKey="Inkomsten" stroke="#18181b" strokeWidth={2} dot={false} />
                   <Line type="monotone" dataKey="Uitgaven" stroke="#ef4444" strokeWidth={2} dot={false} />

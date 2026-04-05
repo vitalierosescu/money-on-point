@@ -1,5 +1,6 @@
 import { getCurrentUser } from "@/lib/auth"
 import { prisma } from "@/lib/db"
+import { Prisma } from "@/prisma/client"
 import { parseYearParam } from "@/lib/parse-year-param"
 import { generateInvoicePDF } from "@/app/(app)/apps/invoices/actions"
 import type { InvoiceFormData } from "@/app/(app)/apps/invoices/components/invoice-page"
@@ -18,7 +19,7 @@ export async function GET(request: Request) {
         gte: new Date(`${year}-01-01`),
         lt: new Date(`${year + 1}-01-01`),
       },
-      NOT: { templateData: null },
+      templateData: { not: Prisma.AnyNull },
     },
     select: { id: true, invoiceNumber: true, templateData: true },
     orderBy: { invoiceNumber: "asc" },

@@ -19,7 +19,7 @@ export default async function ReportsPage({
     : new Date().getFullYear()
 
   const user = await getCurrentUser()
-  const defaultCurrency = user.defaultCurrency ?? "EUR"
+  const defaultCurrency = "EUR"
 
   const dateFrom = `${year}-01-01`
   const dateTo = `${year}-12-31`
