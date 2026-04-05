@@ -380,23 +380,24 @@ export function InvoiceGenerator({
         ))}
       </div>
 
-      {/* Customer Picker - shown in create and edit mode */}
-      {(mode === "create" || mode === "edit") && customers && (
-        <div className="max-w-md">
-          <p className="text-sm font-medium mb-2">Customer</p>
-          <CustomerPicker
-            customers={customers}
-            selectedCustomer={selectedCustomer}
-            onSelect={handleCustomerSelect}
-          />
-        </div>
-      )}
+      <div className="flex flex-row gap-6 items-start">
+        {/* Left: Customer Picker (create/edit only) */}
+        {(mode === "create" || mode === "edit") && customers && (
+          <div className="w-56 flex-shrink-0">
+            <p className="text-sm font-medium mb-2">Customer</p>
+            <CustomerPicker
+              customers={customers}
+              selectedCustomer={selectedCustomer}
+              onSelect={handleCustomerSelect}
+            />
+          </div>
+        )}
 
-      <div className="flex flex-row flex-wrap justify-start items-start gap-4">
+        {/* Center: Invoice Preview */}
         <InvoicePage invoiceData={formData} dispatch={dispatch} currencies={currencies} />
 
-        {/* Actions Panel */}
-        <div className="flex flex-col gap-4">
+        {/* Right: Actions Panel */}
+        <div className="flex flex-col gap-4 flex-shrink-0">
           {mode !== "create" && (
             <Button onClick={handleGeneratePDF} disabled={isPdfLoading}>
               {isPdfLoading ? (
