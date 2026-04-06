@@ -1,5 +1,6 @@
 import { addCurrencyAction, deleteCurrencyAction, editCurrencyAction } from "@/app/(app)/settings/actions"
 import { CrudTable } from "@/components/settings/crud"
+import { PageHeader } from "@/components/ui/page-header"
 import { getCurrentUser } from "@/lib/auth"
 import { getCurrencies } from "@/models/currencies"
 
@@ -13,11 +14,12 @@ export default async function CurrenciesSettingsPage() {
   }))
 
   return (
-    <div className="container">
-      <h1 className="text-2xl font-bold mb-2">Currencies</h1>
-      <p className="text-sm text-gray-500 mb-6 max-w-prose">
-        Custom currencies would not be automatically converted but you still can have them.
-      </p>
+    <div className="container space-y-space-6">
+      <PageHeader
+        title="Currencies"
+        description="Custom currencies would not be automatically converted but you still can have them."
+        size="md"
+      />
       <CrudTable
         items={currenciesWithActions}
         columns={[

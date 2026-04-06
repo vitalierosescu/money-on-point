@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useEffect, useRef, useState, useTransition } from "react"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,23 +16,67 @@ import {
   duplicateExpenseAction,
   createCreditNoteAction,
   deleteExpenseAction,
+  uploadAndAttachFileToExpenseAction,
 } from "@/app/(app)/expenses/actions"
-import { Loader2, Pencil, Copy, CreditCard, Trash2, Download, CheckCircle, FileX } from "lucide-react"
-import { EXPENSE_STATUS_LABELS } from "@/lib/expense-status"
+import { Loader2, Pencil, Copy, CreditCard, Trash2, Download, CheckCircle, ExternalLink, FileX, Upload } from "lucide-react"
+import Link from "next/link"
+import { getExpenseStatusMeta } from "@/lib/expense-status"
 
 type ExpenseDrawerProps = {
   expense: Transaction & { category?: Category | null }
   open: boolean
   onClose: () => void
   categories: Category[]
+  defaultCurrency: string
 }
 
-export function ExpenseDrawer({ expense, open, onClose, categories }: ExpenseDrawerProps) {
+function formatAmount(cents: number | null | undefined, currencyCode: string | null | undefined): string {
+  if (cents === null || cents === undefined) return "—"
+  const currency = currencyCode?.trim() || "EUR"
+  try {
+    return new Intl.NumberFormat("nl-BE", {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(cents / 100)
+  } catch {
+    return `${currency} ${(cents / 100).toFixed(2)}`
+  }
+}
+
+function parseAmountToCents(value: string): number | null {
+  const normalized = value.trim().replace(",", ".")
+  if (!normalized) return null
+  const parsed = parseFloat(normalized)
+  if (Number.isNaN(parsed)) return null
+  return Math.round(parsed * 100)
+}
+
+function normalizeCurrencyCode(value: string): string | null {
+  const normalized = value.trim().toUpperCase()
+  return normalized ? normalized : null
+}
+
+export function ExpenseDrawer({ expense, open, onClose, categories, defaultCurrency }: ExpenseDrawerProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadError, setUploadError] = useState("")
+  const [isDragOver, setIsDragOver] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [merchant, setMerchant] = useState(expense.merchant ?? "")
   const [total, setTotal] = useState(expense.total !== null ? (expense.total / 100).toFixed(2) : "")
+  const [currencyCode, setCurrencyCode] = useState(expense.currencyCode ?? "")
+  const [convertedTotal, setConvertedTotal] = useState(
+    expense.convertedTotal !== null && expense.convertedTotal !== undefined
+      ? (expense.convertedTotal / 100).toFixed(2)
+      : ""
+  )
+  const [convertedCurrencyCode, setConvertedCurrencyCode] = useState(
+    expense.convertedCurrencyCode ?? defaultCurrency
+  )
   const [dueDate, setDueDate] = useState(
     expense.dueDate ? new Date(expense.dueDate as Date).toISOString().split("T")[0] : ""
   )
@@ -46,7 +90,28 @@ export function ExpenseDrawer({ expense, open, onClose, categories }: ExpenseDra
 
   const files = Array.isArray(expense.files) ? (expense.files as string[]) : []
   const status = expense.status ?? "unpaid"
-  const statusInfo = EXPENSE_STATUS_LABELS[status] ?? EXPENSE_STATUS_LABELS.unpaid
+  const statusInfo = getExpenseStatusMeta(status, "nl")
+
+  useEffect(() => {
+    setIsEditing(false)
+    setMerchant(expense.merchant ?? "")
+    setTotal(expense.total !== null ? (expense.total / 100).toFixed(2) : "")
+    setCurrencyCode(expense.currencyCode ?? "")
+    setConvertedTotal(
+      expense.convertedTotal !== null && expense.convertedTotal !== undefined
+        ? (expense.convertedTotal / 100).toFixed(2)
+        : ""
+    )
+    setConvertedCurrencyCode(expense.convertedCurrencyCode ?? defaultCurrency)
+    setDueDate(expense.dueDate ? new Date(expense.dueDate as Date).toISOString().split("T")[0] : "")
+    setCategoryCode(expense.categoryCode ?? "")
+    setNote(expense.note ?? "")
+    setTaxAmount(
+      expense.taxAmount !== null && expense.taxAmount !== undefined
+        ? (expense.taxAmount / 100).toFixed(2)
+        : ""
+    )
+  }, [defaultCurrency, expense])
 
   function run(action: () => Promise<{ success: boolean }>) {
     startTransition(async () => {
@@ -59,14 +124,40 @@ export function ExpenseDrawer({ expense, open, onClose, categories }: ExpenseDra
     startTransition(async () => {
       await updateExpenseAction(expense.id, {
         merchant: merchant || null,
-        total: total ? Math.round(parseFloat(total) * 100) : null,
+        total: parseAmountToCents(total),
+        currencyCode: normalizeCurrencyCode(currencyCode),
+        convertedTotal: parseAmountToCents(convertedTotal),
+        convertedCurrencyCode: normalizeCurrencyCode(convertedCurrencyCode),
         dueDate: dueDate ? new Date(dueDate) : null,
         categoryCode: categoryCode || null,
         note: note || null,
-        taxAmount: taxAmount !== "" ? Math.round(parseFloat(taxAmount) * 100) : null,
+        taxAmount: parseAmountToCents(taxAmount),
       })
       setIsEditing(false)
+      onClose()
     })
+  }
+
+  async function handleFileUpload(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) return
+    setUploadError("")
+    setIsUploading(true)
+    try {
+      const formData = new FormData()
+      for (let i = 0; i < fileList.length; i++) {
+        formData.append("files", fileList[i])
+      }
+      const result = await uploadAndAttachFileToExpenseAction(expense.id, formData)
+      if (result.success) {
+        onClose()
+      } else {
+        setUploadError(result.error ?? "Upload mislukt")
+      }
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : "Upload mislukt")
+    } finally {
+      setIsUploading(false)
+    }
   }
 
   return (
@@ -108,6 +199,15 @@ export function ExpenseDrawer({ expense, open, onClose, categories }: ExpenseDra
                     />
                   </div>
                   <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground uppercase">Currency</Label>
+                    <Input
+                      value={currencyCode}
+                      onChange={(e) => setCurrencyCode(e.target.value.toUpperCase())}
+                      maxLength={5}
+                      placeholder="USD"
+                    />
+                  </div>
+                  <div className="space-y-1">
                     <Label className="text-xs text-muted-foreground uppercase">BTW / Belasting</Label>
                     <Input
                       type="number"
@@ -116,6 +216,25 @@ export function ExpenseDrawer({ expense, open, onClose, categories }: ExpenseDra
                       value={taxAmount}
                       onChange={(e) => setTaxAmount(e.target.value)}
                       placeholder="0.00"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground uppercase">Converted Amount</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={convertedTotal}
+                      onChange={(e) => setConvertedTotal(e.target.value)}
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground uppercase">Converted Currency</Label>
+                    <Input
+                      value={convertedCurrencyCode}
+                      onChange={(e) => setConvertedCurrencyCode(e.target.value.toUpperCase())}
+                      maxLength={5}
+                      placeholder={defaultCurrency}
                     />
                   </div>
                   <div className="space-y-1">
@@ -149,15 +268,15 @@ export function ExpenseDrawer({ expense, open, onClose, categories }: ExpenseDra
                       ["Merchant", expense.merchant ?? "—"],
                       [
                         "Amount",
-                        expense.total !== null
-                          ? `${expense.currencyCode ?? ""} ${(expense.total / 100).toFixed(2)}`
-                          : "—",
+                        formatAmount(expense.total, expense.currencyCode),
                       ],
                       [
                         "BTW/Belasting",
-                        expense.taxAmount != null
-                          ? `${expense.currencyCode ?? ""} ${(expense.taxAmount / 100).toFixed(2)}`
-                          : "–",
+                        formatAmount(expense.taxAmount, expense.currencyCode),
+                      ],
+                      [
+                        "Converted",
+                        formatAmount(expense.convertedTotal, expense.convertedCurrencyCode ?? defaultCurrency),
                       ],
                       [
                         "Date",
@@ -250,6 +369,14 @@ export function ExpenseDrawer({ expense, open, onClose, categories }: ExpenseDra
                       Download PDF
                     </Button>
                   )}
+                  {files.length > 0 && (
+                    <Button variant="outline" className="w-full" asChild>
+                      <Link href="/files">
+                        <ExternalLink className="mr-2 h-4 w-4" />
+                        Open File Library
+                      </Link>
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     className="w-full"
@@ -270,7 +397,7 @@ export function ExpenseDrawer({ expense, open, onClose, categories }: ExpenseDra
                   </Button>
                   <Button
                     variant="outline"
-                    className="w-full border-red-200 text-red-600 hover:bg-red-50"
+                    className="w-full border-destructive/20 text-destructive hover:bg-destructive/5"
                     onClick={() => {
                       if (confirm("Expense verwijderen?")) {
                         run(() => deleteExpenseAction(expense.id))
@@ -286,21 +413,59 @@ export function ExpenseDrawer({ expense, open, onClose, categories }: ExpenseDra
             </div>
           </div>
 
-          {/* Right panel: file preview */}
-          <div className="flex-1 min-h-0 bg-muted/30 p-3 overflow-hidden">
+          {/* Right panel: file preview + upload zone */}
+          <div className="flex-1 min-h-0 bg-muted/30 p-3 flex flex-col gap-3 overflow-y-auto">
             {files.length > 0 ? (
               files.map((fileId) => (
                 <iframe
                   key={fileId}
                   src={`/files/preview/${fileId}`}
-                  className="w-full h-full border rounded-lg bg-white"
+                  className="w-full flex-1 min-h-[400px] border rounded-lg bg-background"
                   title="Document preview"
                 />
               ))
             ) : (
-              <div className="text-center text-muted-foreground">
+              <div className="flex-1 flex items-center justify-center text-center text-muted-foreground">
                 <p>Geen bestanden gekoppeld</p>
               </div>
+            )}
+
+            {/* Upload zone */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => handleFileUpload(e.target.files)}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); setIsDragOver(true) }}
+              onDragLeave={() => setIsDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault()
+                setIsDragOver(false)
+                handleFileUpload(e.dataTransfer.files)
+              }}
+              disabled={isUploading}
+              className={`w-full border-2 border-dashed rounded-lg px-4 py-3 flex items-center justify-center gap-2 text-sm transition-colors cursor-pointer
+                ${isDragOver
+                  ? "border-foreground/40 bg-muted/60 text-foreground"
+                  : "border-border text-muted-foreground hover:border-foreground/30 hover:bg-muted/50"
+                }
+                ${isUploading ? "opacity-50 cursor-not-allowed" : ""}
+              `}
+            >
+              {isUploading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="h-4 w-4" />
+              )}
+              <span>{isUploading ? "Uploaden..." : "Bestanden toevoegen"}</span>
+            </button>
+            {uploadError && (
+              <p className="text-xs text-destructive">{uploadError}</p>
             )}
           </div>
         </div>

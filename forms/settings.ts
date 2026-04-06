@@ -1,7 +1,10 @@
+import { UI_LOCALES } from "@/lib/locale"
 import { randomHexColor } from "@/lib/utils"
+import { RECOMMAND_ENVIRONMENTS } from "@/lib/recommand-settings"
 import { z } from "zod"
 
 export const settingsFormSchema = z.object({
+  ui_locale: z.enum(UI_LOCALES).optional(),
   default_currency: z.string().max(5).optional(),
   default_type: z.string().optional(),
   default_category: z.string().optional(),
@@ -20,6 +23,27 @@ export const settingsFormSchema = z.object({
   is_welcome_message_hidden: z.string().optional(),
   invoice_starting_number: z.string().optional(),
   invoice_default_payment_terms: z.string().optional(),
+  business_enterprise_number: z.string().optional(),
+  business_vat_number: z.string().optional(),
+  business_country_code: z.string().max(2).optional(),
+  business_postal_code: z.string().optional(),
+  business_city: z.string().optional(),
+  business_street_line1: z.string().optional(),
+  business_street_line2: z.string().optional(),
+  business_iban: z.string().optional(),
+  recommand_environment: z.enum(RECOMMAND_ENVIRONMENTS).optional(),
+  recommand_team_id: z.string().optional(),
+  recommand_company_id: z.string().optional(),
+  recommand_api_key: z.string().optional(),
+  recommand_api_secret: z.string().optional(),
+  recommand_playground_team_id: z.string().optional(),
+  recommand_playground_company_id: z.string().optional(),
+  recommand_playground_api_key: z.string().optional(),
+  recommand_playground_api_secret: z.string().optional(),
+  recommand_production_team_id: z.string().optional(),
+  recommand_production_company_id: z.string().optional(),
+  recommand_production_api_key: z.string().optional(),
+  recommand_production_api_secret: z.string().optional(),
 })
 
 export const currencyFormSchema = z.object({

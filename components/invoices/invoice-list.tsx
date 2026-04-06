@@ -90,13 +90,13 @@ function DueDateCell({ dueDate, status }: { dueDate: Date | null | undefined; st
   let subColor = "text-muted-foreground"
   if (diffDays === 0) {
     subText = "vandaag"
-    subColor = "text-orange-600"
+    subColor = "text-warning"
   } else if (diffDays > 0) {
     subText = `over ${diffDays} ${diffDays === 1 ? "dag" : "dagen"}`
-    subColor = diffDays <= 7 ? "text-orange-600" : "text-muted-foreground"
+    subColor = diffDays <= 7 ? "text-warning" : "text-muted-foreground"
   } else {
     subText = `${Math.abs(diffDays)} dagen geleden`
-    subColor = "text-red-600"
+    subColor = "text-destructive"
   }
 
   return (
@@ -200,28 +200,28 @@ export function InvoiceList({ invoices }: InvoiceListProps) {
       {
         label: "Openstaand",
         value: String(openInvoices.length),
-        tone: "border-amber-200 bg-amber-50/70",
+        tone: "border-warning/30 bg-warning/10",
         detail: formatCurrencyTotals(openInvoices, (invoice) => Math.max(invoice.total - invoice.paidAmount, 0)),
         note: openInvoices.length === 1 ? "1 invoice wacht op betaling" : "facturen wachten op betaling",
       },
       {
         label: "Achterstallig",
         value: String(overdueInvoices.length),
-        tone: overdueInvoices.length > 0 ? "border-rose-200 bg-rose-50/80" : "border-border bg-card",
+        tone: overdueInvoices.length > 0 ? "border-destructive/30 bg-destructive/10" : "border-border bg-card",
         detail: formatCurrencyTotals(overdueInvoices, (invoice) => Math.max(invoice.total - invoice.paidAmount, 0)),
         note: overdueInvoices.length === 0 ? "niets dringend" : "vereist opvolging",
       },
       {
         label: "Betaald deze maand",
         value: String(paidThisMonth.length),
-        tone: "border-emerald-200 bg-emerald-50/80",
+        tone: "border-success/30 bg-success/10",
         detail: formatCurrencyTotals(paidThisMonth, (invoice) => invoice.paidAmount || invoice.total),
         note: now.toLocaleDateString("nl-BE", { month: "long", year: "numeric" }),
       },
       {
         label: "Verzendklaar",
         value: String(sendReadyDrafts.length),
-        tone: sendReadyDrafts.length > 0 ? "border-sky-200 bg-sky-50/80" : "border-border bg-card",
+        tone: sendReadyDrafts.length > 0 ? "border-info/30 bg-info/10" : "border-border bg-card",
         detail: blockedDrafts > 0 ? `${blockedDrafts} geblokkeerd` : "geen blokkades",
         note: draftInvoices.length === 0 ? "geen drafts" : `${draftInvoices.length} draft${draftInvoices.length === 1 ? "" : "s"} in totaal`,
       },
@@ -276,7 +276,7 @@ export function InvoiceList({ invoices }: InvoiceListProps) {
                   <span
                     className={`ml-1.5 rounded-full px-1.5 py-0.5 text-xs font-medium ${
                       isOverdue
-                        ? "bg-red-100 text-red-700"
+                        ? "bg-destructive/10 text-destructive"
                         : isActive
                         ? "bg-foreground text-background"
                         : "bg-muted text-muted-foreground"
@@ -405,7 +405,7 @@ export function InvoiceList({ invoices }: InvoiceListProps) {
                     <td className="px-3 py-3 text-sm">
                       <div className="flex flex-col gap-0.5">
                         <span>{getInvoiceDeliveryMethodLabel(getInvoiceDeliveryMethod(invoice))}</span>
-                        <span className={`text-xs ${getInvoiceDeliveryReadiness(invoice).isReady ? "text-emerald-600" : "text-amber-600"}`}>
+                        <span className={`text-xs ${getInvoiceDeliveryReadiness(invoice).isReady ? "text-success" : "text-warning"}`}>
                           {getInvoiceDeliveryReadiness(invoice).isReady ? "ready" : "blocked"}
                         </span>
                       </div>

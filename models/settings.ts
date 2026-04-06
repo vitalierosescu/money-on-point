@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/db"
 import { PROVIDERS } from "@/lib/llm-providers"
-import { cache } from "react"
 import { LLMProvider } from "@/ai/providers/llmProvider"
+import { unstable_cache } from "next/cache"
+import { cache } from "react"
 
 export type SettingsMap = Record<string, string>
 
@@ -50,15 +51,27 @@ export function getLLMSettings(settings: SettingsMap) {
   }
 }
 
-export const getSettings = cache(async (userId: string): Promise<SettingsMap> => {
-  const settings = await prisma.setting.findMany({
-    where: { userId },
-  })
+const getSettingsCached = (userId: string) =>
+  unstable_cache(
+    async () => {
+      const settings = await prisma.setting.findMany({
+        where: { userId },
+      })
 
-  return settings.reduce((acc, setting) => {
-    acc[setting.code] = setting.value || ""
-    return acc
-  }, {} as SettingsMap)
+      return settings.reduce((acc, setting) => {
+        acc[setting.code] = setting.value || ""
+        return acc
+      }, {} as SettingsMap)
+    },
+    ["settings", userId],
+    {
+      revalidate: 30,
+      tags: [`settings:${userId}`],
+    }
+  )()
+
+export const getSettings = cache(async (userId: string): Promise<SettingsMap> => {
+  return await getSettingsCached(userId)
 })
 
 export const updateSettings = cache(async (userId: string, code: string, value: string | undefined) => {

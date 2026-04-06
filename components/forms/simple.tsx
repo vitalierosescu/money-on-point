@@ -1,12 +1,10 @@
 "use client"
-import Image from "next/image"
-
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
+import { FormField } from "@/components/ui/form-field"
 import { Input } from "@/components/ui/input"
+import { NativeSelect } from "@/components/ui/native-select"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import { SelectProps } from "@radix-ui/react-select"
@@ -28,15 +26,18 @@ export function FormInput({ title, hideIfEmpty = false, isRequired = false, ...p
   }
 
   return (
-    <label className="flex flex-col gap-1">
-      {title && <span className="text-sm font-medium">{title}</span>}
+    <FormField
+      label={title}
+      required={isRequired}
+      htmlFor={props.id || (props as { name?: string }).name}
+    >
       <Input
         {...props}
         id={props.id || (props as { name?: string }).name}
         className={cn("bg-background", isRequired && isEmpty && "bg-yellow-50", props.className)}
         data-1p-ignore
       />
-    </label>
+    </FormField>
   )
 }
 
@@ -70,8 +71,11 @@ export function FormTextarea({ title, hideIfEmpty = false, isRequired = false, .
   }
 
   return (
-    <label className="flex flex-col gap-1">
-      {title && <span className="text-sm font-medium">{title}</span>}
+    <FormField
+      label={title}
+      required={isRequired}
+      htmlFor={props.id || (props as { name?: string }).name}
+    >
       <Textarea
         ref={textareaRef}
         {...props}
@@ -79,7 +83,7 @@ export function FormTextarea({ title, hideIfEmpty = false, isRequired = false, .
         className={cn("bg-background", isRequired && isEmpty && "bg-yellow-50", props.className)}
         data-1p-ignore
       />
-    </label>
+    </FormField>
   )
 }
 
@@ -93,7 +97,8 @@ export const FormSelect = ({
   onValueChange,
   name,
   id,
-  ...props
+  value,
+  defaultValue,
 }: {
   items: Array<{ code: string; name: string; color?: string; badge?: string; logo?: string }>
   title?: string
@@ -104,19 +109,24 @@ export const FormSelect = ({
   name?: string
   id?: string
 } & SelectProps) => {
-  const [internalValue, setInternalValue] = useState<string | undefined>(
-    (props.value as string | undefined) || (props.defaultValue as string | undefined)
-  )
-  const isControlled = props.value !== undefined
-  const selectValue = (isControlled ? (props.value as string | undefined) : internalValue) || ""
-  const isEmpty = !selectValue || selectValue.toString().trim() === ""
+  const allowedValues = new Set(items.map((item) => item.code))
+  const normalizeSelectValue = (candidate: string | undefined) => {
+    if (!candidate || candidate.trim() === "") return ""
+    const trimmed = candidate.trim()
+    return allowedValues.has(trimmed) ? trimmed : ""
+  }
+
+  const normalizedValue = normalizeSelectValue(value as string | undefined)
+  const normalizedDefaultValue = normalizeSelectValue(defaultValue as string | undefined)
+  const isControlled = value !== undefined
+  const selectValue = isControlled ? normalizedValue : normalizedDefaultValue
+  const isEmpty = !selectValue
 
   const labelId = title ? `${id || name || "select"}-label` : undefined
   const controlId = id || name
 
-  const handleChange = (v: string) => {
-    if (!isControlled) setInternalValue(v)
-    onValueChange?.(v)
+  const handleChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    onValueChange?.(event.target.value)
   }
 
   if (hideIfEmpty && isEmpty) {
@@ -124,43 +134,25 @@ export const FormSelect = ({
   }
 
   return (
-    <span className="flex flex-col gap-1">
-      {title && (
-        <span className="text-sm font-medium" id={labelId}>
-          {title}
-        </span>
-      )}
-      {/* Hidden input to ensure form submissions include this value */}
-      {name && <input type="hidden" name={name} value={selectValue} />}
-      <Select
-        {...props}
-        onValueChange={handleChange}
-        {...(isControlled ? { value: props.value as string } : { defaultValue: props.defaultValue as string })}
+    <FormField label={title} required={isRequired} htmlFor={controlId}>
+      <NativeSelect
+        name={name}
+        id={controlId}
+        aria-labelledby={labelId}
+        className={cn(isRequired && isEmpty && "bg-yellow-50")}
+        onChange={handleChange}
+        {...(isControlled ? { value: normalizedValue } : { defaultValue: normalizedDefaultValue })}
       >
-        <SelectTrigger
-          id={controlId}
-          aria-labelledby={labelId}
-          className={cn("w-full min-w-[150px] bg-background", isRequired && isEmpty && "bg-yellow-50")}
-        >
-          <SelectValue placeholder={placeholder} />
-        </SelectTrigger>
-        <SelectContent>
-          {emptyValue && <SelectItem value="-">{emptyValue}</SelectItem>}
-          {items.map((item) => (
-            <SelectItem key={item.code} value={item.code}>
-              <div className="flex items-center gap-2 text-base pr-2">
-                {item.logo && <Image src={item.logo} alt={item.name} width={20} height={20} className="rounded-full" />}
-                {item.badge && <Badge className="px-2">{item.badge}</Badge>}
-                {!item.badge && item.color && (
-                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
-                )}
-                {item.name}
-              </div>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </span>
+        <option value="" disabled={isRequired}>
+          {placeholder || emptyValue || "Select an option"}
+        </option>
+        {items.map((item) => (
+          <option key={item.code} value={item.code}>
+            {item.badge ? `${item.name} (${item.badge})` : item.name}
+          </option>
+        ))}
+      </NativeSelect>
+    </FormField>
   )
 }
 
@@ -196,8 +188,7 @@ export const FormDate = ({
   }
 
   return (
-    <label className="flex flex-col gap-1">
-      {title && <span className="text-sm font-medium">{title}</span>}
+    <FormField label={title} htmlFor={name}>
       <div className="relative">
         <Popover>
           <PopoverTrigger asChild>
@@ -225,7 +216,7 @@ export const FormDate = ({
           </PopoverContent>
         </Popover>
       </div>
-    </label>
+    </FormField>
   )
 }
 

@@ -128,7 +128,7 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
           </SheetHeader>
 
           <div className="flex flex-1 overflow-hidden">
-            <div className="flex-1 overflow-y-auto border-r bg-gray-50 flex flex-col">
+            <div className="flex-1 overflow-y-auto border-r bg-muted/20 flex flex-col">
               <div className="flex-1">
                 {templateData ? (
                   <InvoicePreview templateData={templateData} />
@@ -138,7 +138,7 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
                   </div>
                 )}
               </div>
-              <div className="p-4 border-t bg-white">
+              <div className="p-4 border-t bg-card">
                 <Link href={`/invoices/${invoice.id}`} onClick={onClose}>
                   <Button variant="outline" className="w-full">
                     <ExternalLink className="mr-2 h-4 w-4" />
@@ -179,7 +179,7 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
                   </span>
                 </div>
                 {invoice.paidAmount > 0 && (
-                  <div className="flex justify-between py-1 border-b text-green-600">
+                  <div className="flex justify-between py-1 border-b text-success">
                     <span>Paid</span>
                     <span>
                       {invoice.currency} {(invoice.paidAmount / 100).toFixed(2)}

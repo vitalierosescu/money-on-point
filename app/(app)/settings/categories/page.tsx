@@ -1,5 +1,6 @@
 import { addCategoryAction, deleteCategoryAction, editCategoryAction } from "@/app/(app)/settings/actions"
 import { CrudTable } from "@/components/settings/crud"
+import { PageHeader } from "@/components/ui/page-header"
 import { getCurrentUser } from "@/lib/auth"
 import { randomHexColor } from "@/lib/utils"
 import { getCategories } from "@/models/categories"
@@ -15,12 +16,12 @@ export default async function CategoriesSettingsPage() {
   }))
 
   return (
-    <div className="container">
-      <h1 className="text-2xl font-bold mb-2">Categories</h1>
-      <p className="text-sm text-gray-500 mb-6 max-w-prose">
-        Create your own categories that better reflect the type of income and expenses you have. Define an LLM Prompt so
-        that AI can determine this category automatically.
-      </p>
+    <div className="container space-y-space-6">
+      <PageHeader
+        title="Categories"
+        description="Create your own categories that better reflect the type of income and expenses you have. Define an LLM Prompt so that AI can determine this category automatically."
+        size="md"
+      />
 
       <CrudTable
         items={categoriesWithActions}

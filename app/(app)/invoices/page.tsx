@@ -1,5 +1,6 @@
 import { InvoiceList } from "@/components/invoices/invoice-list"
 import { Button } from "@/components/ui/button"
+import { PageHeader } from "@/components/ui/page-header"
 import { getCurrentUser } from "@/lib/auth"
 import { getInvoices, InvoiceFilters } from "@/models/invoices"
 import { Plus } from "lucide-react"
@@ -22,19 +23,18 @@ export default async function InvoicesPage({
 
   return (
     <>
-      <header className="flex items-center justify-between gap-2 mb-8">
-        <h2 className="flex flex-row gap-3 md:gap-5">
-          <span className="text-3xl font-bold tracking-tight">Invoices</span>
-          <span className="text-3xl tracking-tight opacity-20">
-            {invoices.length}
-          </span>
-        </h2>
-        <Link href="/invoices/new">
-          <Button>
-            <Plus /> New Invoice
-          </Button>
-        </Link>
-      </header>
+      <PageHeader
+        title="Invoices"
+        count={invoices.length}
+        className="mb-space-6"
+        actions={
+          <Link href="/invoices/new">
+            <Button>
+              <Plus /> New Invoice
+            </Button>
+          </Link>
+        }
+      />
 
       <InvoiceList invoices={invoices} />
     </>

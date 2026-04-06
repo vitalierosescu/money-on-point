@@ -19,7 +19,7 @@ import { createProject, deleteProject, updateProject } from "@/models/projects"
 import { SettingsMap, updateSettings } from "@/models/settings"
 import { updateUser } from "@/models/users"
 import { Prisma, User } from "@/prisma/client"
-import { revalidatePath } from "next/cache"
+import { revalidatePath, revalidateTag } from "next/cache"
 import path from "path"
 
 export async function saveSettingsAction(
@@ -40,6 +40,7 @@ export async function saveSettingsAction(
     }
   }
 
+  revalidateTag(`settings:${user.id}`)
   revalidatePath("/settings")
   return { success: true }
 }
@@ -93,6 +94,7 @@ export async function saveProfileAction(
     businessLogo: businessLogoUrl,
   })
 
+  revalidateTag(`user:${user.id}`)
   revalidatePath("/settings/profile")
   revalidatePath("/settings/business")
   return { success: true }

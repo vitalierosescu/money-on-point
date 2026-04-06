@@ -6,6 +6,7 @@ import { FormError } from "@/components/forms/error"
 import { FormTextarea } from "@/components/forms/simple"
 import { Button } from "@/components/ui/button"
 import { Card, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Field } from "@/prisma/client"
 import { CircleCheckBig, Edit, GripVertical } from "lucide-react"
 import Link from "next/link"
@@ -104,7 +105,7 @@ export default function LLMSettingsForm({
             {pending ? "Saving..." : "Save Settings"}
           </Button>
           {saveState?.success && (
-            <p className="text-green-500 flex flex-row items-center gap-2">
+            <p className="text-success flex flex-row items-center gap-2">
               <CircleCheckBig />
               Saved!
             </p>
@@ -160,11 +161,10 @@ function DndProviderBlocks({ providerOrder, setProviderOrder, providerValues, ha
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <SortableContext items={providerOrder} strategy={verticalListSortingStrategy}>
-        {providerOrder.map((providerKey, idx) => (
+        {providerOrder.map((providerKey) => (
           <SortableProviderBlock
             key={providerKey}
             id={providerKey}
-            idx={idx}
             providerKey={providerKey}
             value={providerValues[providerKey]}
             handleValueChange={handleProviderValueChange}
@@ -177,13 +177,12 @@ function DndProviderBlocks({ providerOrder, setProviderOrder, providerValues, ha
 
 type SortableProviderBlockProps = {
   id: string;
-  idx: number;
   providerKey: string;
   value: { apiKey: string; model: string; baseUrl: string };
   handleValueChange: (providerKey: string, field: "apiKey" | "model" | "baseUrl", value: string) => void;
 };
 
-function SortableProviderBlock({ id, idx, providerKey, value, handleValueChange }: SortableProviderBlockProps) {
+function SortableProviderBlock({ id, providerKey, value, handleValueChange }: SortableProviderBlockProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
 
   const provider = PROVIDERS.find(p => p.key === providerKey)
@@ -211,30 +210,30 @@ function SortableProviderBlock({ id, idx, providerKey, value, handleValueChange 
         <span className="font-semibold">{provider.label}</span>
       </div>
       <div className="flex flex-row gap-4 items-center">
-        <input
+        <Input
           type="text"
           name={provider.apiKeyName}
           value={value.apiKey}
           onChange={e => handleValueChange(provider.key, "apiKey", e.target.value)}
-          className="flex-1 border rounded px-2 py-1"
+          className="flex-1"
           placeholder={provider.baseUrlName ? "API key (optional)" : "API key"}
         />
-        <input
+        <Input
           type="text"
           name={provider.modelName}
           value={value.model}
           onChange={e => handleValueChange(provider.key, "model", e.target.value)}
-          className="flex-1 border rounded px-2 py-1"
+          className="flex-1"
           placeholder="Model name"
         />
       </div>
       {provider.baseUrlName && (
-        <input
+        <Input
           type="text"
           name={provider.baseUrlName}
           value={value.baseUrl}
           onChange={e => handleValueChange(provider.key, "baseUrl", e.target.value)}
-          className="w-full border rounded px-2 py-1"
+          className="w-full"
           placeholder="Base URL (e.g. http://localhost:11434/v1)"
         />
       )}

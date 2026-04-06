@@ -1,106 +1,169 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { bulkDeleteExpenseAction, bulkMarkExpensePaidAction, bulkMarkExpenseToPayAction } from "@/app/(app)/expenses/actions"
+import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { getExpenseAmountForCurrency, getExpenseStatusMeta, normalizeExpenseStatus, type ExpenseStatus } from "@/lib/expense-status"
+import { t } from "@/lib/i18n"
+import { formatLocaleCurrency, formatLocaleDate, formatLocaleNumber, type UiLocale } from "@/lib/locale"
 import { Category, Transaction } from "@/prisma/client"
-import { ExpenseDrawer } from "./expense-drawer"
+import { useRouter } from "next/navigation"
+import React, { useMemo, useState, useTransition } from "react"
+import { Trash2 } from "lucide-react"
 
 type ExpenseListProps = {
   expenses: (Transaction & { category?: Category | null })[]
-  categories: Category[]
+  defaultCurrency: string
+  locale: UiLocale
 }
 
-type TabStatus = "all" | "unpaid" | "to_pay" | "paid" | "overdue"
+type TabStatus = "all" | ExpenseStatus
 
-const TAB_CONFIG: { value: TabStatus; label: string }[] = [
-  { value: "unpaid", label: "Nieuw" },
-  { value: "to_pay", label: "Te betalen" },
-  { value: "paid",   label: "Betaald" },
-  { value: "overdue", label: "Achterstallig" },
-  { value: "all",    label: "Alles" },
-]
-
-const STATUS_BADGE: Record<string, { label: string; className: string }> = {
-  unpaid:  { label: "Nieuw",         className: "bg-yellow-100 text-yellow-800" },
-  to_pay:  { label: "Te betalen",    className: "bg-blue-100 text-blue-800" },
-  paid:    { label: "Betaald",       className: "bg-green-100 text-green-800" },
-  overdue: { label: "Achterstallig", className: "bg-red-100 text-red-800" },
+function getTabConfig(locale: UiLocale): Array<{ value: TabStatus; label: string }> {
+  return [
+    { value: "all", label: t(locale, "expenses.tabsAll") },
+    { value: "unpaid", label: t(locale, "expenses.tabsUnpaid") },
+    { value: "to_pay", label: t(locale, "expenses.tabsToPay") },
+    { value: "paid", label: t(locale, "expenses.tabsPaid") },
+    { value: "overdue", label: t(locale, "expenses.tabsOverdue") },
+  ]
 }
 
-function groupByMonth(expenses: (Transaction & { category?: Category | null })[]) {
+function groupByMonth(expenses: (Transaction & { category?: Category | null })[], locale: UiLocale) {
   const groups: Record<string, { label: string; rows: (Transaction & { category?: Category | null })[] }> = {}
-  for (const exp of expenses) {
-    const date = new Date(exp.issuedAt ?? exp.createdAt)
+
+  for (const expense of expenses) {
+    const date = new Date(expense.issuedAt ?? expense.createdAt)
     const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
-    const label = date.toLocaleDateString("nl-BE", { month: "long", year: "numeric" })
-    if (!groups[key]) groups[key] = { label, rows: [] }
-    groups[key].rows.push(exp)
+    const label = formatLocaleDate(date, locale, { month: "long", year: "numeric" })
+    if (!groups[key]) {
+      groups[key] = { label, rows: [] }
+    }
+    groups[key].rows.push(expense)
   }
+
   return Object.entries(groups)
     .sort((a, b) => b[0].localeCompare(a[0]))
-    .map(([, g]) => g)
+    .map(([, group]) => group)
 }
 
-export function ExpenseList({ expenses, categories }: ExpenseListProps) {
-  const [activeTab, setActiveTab] = useState<TabStatus>("unpaid")
+export function ExpenseList({ expenses, defaultCurrency, locale }: ExpenseListProps) {
+  const router = useRouter()
+  const [activeTab, setActiveTab] = useState<TabStatus>("all")
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [openExpense, setOpenExpense] = useState<(Transaction & { category?: Category | null }) | null>(null)
+  const [isPending, startTransition] = useTransition()
+
+  const tabConfig = useMemo(() => getTabConfig(locale), [locale])
 
   const counts = useMemo(() => {
-    const c: Record<string, number> = {}
-    for (const e of expenses) {
-      const s = e.status ?? "unpaid"
-      c[s] = (c[s] ?? 0) + 1
+    const nextCounts: Record<string, number> = {}
+    for (const expense of expenses) {
+      const status = normalizeExpenseStatus(expense.status)
+      nextCounts[status] = (nextCounts[status] ?? 0) + 1
     }
-    return c
+    return nextCounts
   }, [expenses])
 
   const filtered = useMemo(
-    () => activeTab === "all" ? expenses : expenses.filter((e) => (e.status ?? "unpaid") === activeTab),
-    [expenses, activeTab]
+    () => (activeTab === "all" ? expenses : expenses.filter((expense) => normalizeExpenseStatus(expense.status) === activeTab)),
+    [activeTab, expenses]
   )
 
-  const grouped = groupByMonth(filtered)
+  const filteredTotal = useMemo(() => {
+    const sum = filtered.reduce((acc, expense) => acc + getExpenseAmountForCurrency(expense, defaultCurrency), 0)
+    return formatLocaleCurrency(sum, defaultCurrency, locale)
+  }, [defaultCurrency, filtered, locale])
+
+  const grouped = useMemo(() => groupByMonth(filtered, locale), [filtered, locale])
+
+  const allSelected = filtered.length > 0 && filtered.every((expense) => selectedIds.has(expense.id))
+  const someSelected = filtered.some((expense) => selectedIds.has(expense.id)) && !allSelected
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
       return next
     })
   }
 
+  function toggleSelectAll() {
+    if (allSelected || someSelected) {
+      setSelectedIds(new Set())
+      return
+    }
+
+    setSelectedIds(new Set(filtered.map((expense) => expense.id)))
+  }
+
   function handleBulkDownload() {
-    const selected = expenses.filter((e) => selectedIds.has(e.id))
-    selected.forEach((e) => {
-      const files = Array.isArray(e.files) ? (e.files as string[]) : []
-      files.forEach((fileId) => window.open(`/files/download/${fileId}`, "_blank"))
+    expenses
+      .filter((expense) => selectedIds.has(expense.id))
+      .forEach((expense) => {
+        const files = Array.isArray(expense.files) ? (expense.files as string[]) : []
+        files.forEach((fileId) => window.open(`/files/download/${fileId}`, "_blank"))
+      })
+  }
+
+  function handleBulkMarkPaid() {
+    startTransition(async () => {
+      await bulkMarkExpensePaidAction(Array.from(selectedIds))
+      setSelectedIds(new Set())
+      router.refresh()
+    })
+  }
+
+  function handleBulkMarkToPay() {
+    startTransition(async () => {
+      await bulkMarkExpenseToPayAction(Array.from(selectedIds))
+      setSelectedIds(new Set())
+      router.refresh()
+    })
+  }
+
+  function handleBulkDelete() {
+    if (!window.confirm(t(locale, "expenses.bulkDeleteConfirm"))) {
+      return
+    }
+
+    startTransition(async () => {
+      await bulkDeleteExpenseAction(Array.from(selectedIds))
+      setSelectedIds(new Set())
+      router.refresh()
     })
   }
 
   if (expenses.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-        <p>Nog geen expenses.</p>
-        <p className="text-sm mt-1">Upload je eerste factuur via de Upload knop.</p>
+        <p>{t(locale, "expenses.emptyTitle")}</p>
+        <p className="text-sm mt-1">{t(locale, "expenses.emptyDescription")}</p>
       </div>
     )
   }
 
   return (
-    <div>
-      {/* Status tabs */}
+    <div className="relative">
       <div className="flex border-b overflow-x-auto">
-        {TAB_CONFIG.map((tab) => {
-          const count = tab.value === "all"
-            ? expenses.length
-            : (counts[tab.value] ?? 0)
+        {tabConfig.map((tab) => {
+          const count = tab.value === "all" ? expenses.length : (counts[tab.value] ?? 0)
+          const isActive = activeTab === tab.value
           const isOverdue = tab.value === "overdue"
+
           return (
             <button
               key={tab.value}
-              onClick={() => setActiveTab(tab.value)}
+              type="button"
+              onClick={() => {
+                setActiveTab(tab.value)
+                setSelectedIds(new Set())
+              }}
               className={`px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
-                activeTab === tab.value
+                isActive
                   ? "border-foreground text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
@@ -109,14 +172,14 @@ export function ExpenseList({ expenses, categories }: ExpenseListProps) {
               {count > 0 && (
                 <span
                   className={`ml-1.5 rounded-full px-1.5 py-0.5 text-xs font-medium ${
-                    isOverdue && count > 0
-                      ? "bg-red-100 text-red-700"
-                      : activeTab === tab.value
-                      ? "bg-foreground text-background"
-                      : "bg-muted text-muted-foreground"
+                    isOverdue
+                      ? "bg-destructive/10 text-destructive"
+                      : isActive
+                        ? "bg-foreground text-background"
+                        : "bg-muted text-muted-foreground"
                   }`}
                 >
-                  {count}
+                  {formatLocaleNumber(count, locale)}
                 </span>
               )}
             </button>
@@ -124,100 +187,162 @@ export function ExpenseList({ expenses, categories }: ExpenseListProps) {
         })}
       </div>
 
-      {/* Bulk action bar */}
       {selectedIds.size > 0 && (
-        <div className="flex items-center justify-between px-4 py-2 bg-blue-50 border-b text-sm">
-          <span className="text-blue-700">{selectedIds.size} geselecteerd</span>
-          <button
-            onClick={handleBulkDownload}
-            className="text-sm font-medium bg-blue-600 text-white px-3 py-1 rounded-md"
-          >
-            Download PDFs
-          </button>
+        <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 border-b bg-background px-4 py-3 shadow-sm">
+          <span className="text-sm text-muted-foreground">
+            {t(locale, "expenses.bulkSelected", { count: formatLocaleNumber(selectedIds.size, locale) })}
+          </span>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" onClick={handleBulkMarkPaid} disabled={isPending}>
+              {t(locale, "expenses.bulkMarkPaid")}
+            </Button>
+            <Button size="sm" variant="outline" onClick={handleBulkMarkToPay} disabled={isPending}>
+              {t(locale, "expenses.bulkMarkToPay")}
+            </Button>
+            <Button size="sm" variant="outline" onClick={handleBulkDelete} disabled={isPending}>
+              <Trash2 className="mr-2 h-4 w-4" />
+              {t(locale, "expenses.bulkDelete")}
+            </Button>
+            <Button size="sm" variant="outline" onClick={handleBulkDownload} disabled={isPending}>
+              {t(locale, "expenses.bulkDownload")}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())} disabled={isPending}>
+              {t(locale, "expenses.bulkClear")}
+            </Button>
+          </div>
         </div>
       )}
 
-      {/* No results */}
-      {grouped.length === 0 && (
-        <p className="text-center text-muted-foreground py-10">
-          Geen expenses voor deze status.
-        </p>
-      )}
-
-      {/* Grouped rows */}
-      {grouped.map(({ label, rows }) => (
-        <div key={label}>
-          <div className="px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide bg-muted/30">
-            {label}
-          </div>
-          <div className="divide-y">
-            {rows.map((expense) => {
-              const status = expense.status ?? "unpaid"
-              const badge = STATUS_BADGE[status]
-              const issuedAt = expense.issuedAt ? new Date(expense.issuedAt) : new Date(expense.createdAt)
-              const dueDate = expense.dueDate ? new Date(expense.dueDate) : null
-
-              return (
-                <div
-                  key={expense.id}
-                  className="flex items-center gap-3 px-4 py-3 hover:bg-muted/40 cursor-pointer"
-                  onClick={() => setOpenExpense(expense)}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.has(expense.id)}
-                    onChange={(e) => { e.stopPropagation(); toggleSelect(expense.id) }}
-                    onClick={(e) => e.stopPropagation()}
-                    className="shrink-0"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm truncate">
-                        {expense.merchant ?? expense.name ?? "—"}
-                      </span>
-                      {expense.name && expense.name !== expense.merchant && (
-                        <span className="text-xs text-muted-foreground truncate hidden md:block">
-                          {expense.name}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {issuedAt.toLocaleDateString("nl-BE", { day: "2-digit", month: "short" })}
-                      {expense.category && ` · ${expense.category.name}`}
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0 flex flex-col items-end gap-1">
-                    <span className={`font-medium text-sm ${status === "overdue" ? "text-red-600" : ""}`}>
-                      {expense.total !== null
-                        ? `${expense.currencyCode ?? "EUR"} ${(expense.total / 100).toFixed(2)}`
-                        : "—"}
-                    </span>
-                    {dueDate && status !== "paid" && (
-                      <span className={`text-xs ${status === "overdue" ? "text-red-600 font-medium" : "text-muted-foreground"}`}>
-                        {status === "overdue" ? "Vervallen" : "Vervalt"}{" "}
-                        {dueDate.toLocaleDateString("nl-BE", { day: "2-digit", month: "short" })}
-                      </span>
-                    )}
-                    {badge && status !== "unpaid" && (
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${badge.className}`}>
-                        {badge.label}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )
+      {filtered.length > 0 && (
+        <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/20">
+          <span className="text-xs text-muted-foreground">
+            {t(locale, "expenses.filteredSummary", {
+              count: formatLocaleNumber(filtered.length, locale),
+              label: t(locale, filtered.length === 1 ? "expenses.countExpense" : "expenses.countExpenses"),
             })}
-          </div>
+          </span>
+          <span className="text-xs font-mono font-medium text-foreground tabular-nums">{filteredTotal}</span>
         </div>
-      ))}
+      )}
 
-      {openExpense && (
-        <ExpenseDrawer
-          expense={openExpense}
-          open={true}
-          onClose={() => setOpenExpense(null)}
-          categories={categories}
-        />
+      {grouped.length === 0 && (
+        <p className="text-center text-muted-foreground py-10 text-sm">{t(locale, "expenses.noResultsForStatus")}</p>
+      )}
+
+      {grouped.length > 0 && (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-muted/20">
+              <th className="w-10 px-4 py-3">
+                <Checkbox
+                  checked={allSelected}
+                  ref={(element) => {
+                    if (element) {
+                      ;(element as HTMLButtonElement & { indeterminate?: boolean }).indeterminate = someSelected
+                    }
+                  }}
+                  onCheckedChange={toggleSelectAll}
+                  aria-label={t(locale, "expenses.bulkSelected", { count: formatLocaleNumber(filtered.length, locale) })}
+                />
+              </th>
+              <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                {t(locale, "expenses.tableVendor")}
+              </th>
+              <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide hidden sm:table-cell">
+                {t(locale, "expenses.tableDate")}
+              </th>
+              <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide hidden md:table-cell">
+                {t(locale, "expenses.tableCategory")}
+              </th>
+              <th className="px-3 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                {t(locale, "expenses.tableAmount")}
+              </th>
+              <th className="px-3 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wide hidden sm:table-cell">
+                {t(locale, "expenses.tableStatus")}
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {grouped.map(({ label, rows }) => (
+              <React.Fragment key={label}>
+                <tr>
+                  <td colSpan={6} className="px-4 py-1.5 bg-muted/10 border-b border-t">
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-widest">{label}</span>
+                  </td>
+                </tr>
+
+                {rows.map((expense) => {
+                  const statusMeta = getExpenseStatusMeta(expense.status, locale)
+                  const issuedAt = expense.issuedAt ? new Date(expense.issuedAt) : new Date(expense.createdAt)
+                  const dueDate = expense.dueDate ? new Date(expense.dueDate) : null
+                  const isSelected = selectedIds.has(expense.id)
+
+                  return (
+                    <tr
+                      key={expense.id}
+                      className={`cursor-pointer transition-colors hover:bg-muted/30 ${isSelected ? "bg-muted/20" : ""}`}
+                      onClick={() => router.push(`/expenses/${expense.id}`)}
+                    >
+                      <td className="w-10 px-4 py-3">
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => toggleSelect(expense.id)}
+                          onClick={(event) => event.stopPropagation()}
+                          aria-label={`${t(locale, "expenses.tableVendor")}: ${expense.merchant ?? expense.name ?? t(locale, "expenses.detailFallbackTitle")}`}
+                        />
+                      </td>
+
+                      <td className="px-3 py-3 max-w-0">
+                        <div className="font-medium truncate">{expense.merchant ?? expense.name ?? "—"}</div>
+                        {expense.name && expense.name !== expense.merchant && (
+                          <div className="text-xs text-muted-foreground truncate">{expense.name}</div>
+                        )}
+                      </td>
+
+                      <td className="px-3 py-3 hidden sm:table-cell whitespace-nowrap">
+                        <span className="font-mono text-sm text-muted-foreground tabular-nums">
+                          {formatLocaleDate(issuedAt, locale, { day: "2-digit", month: "short", year: "2-digit" })}
+                        </span>
+                        {dueDate && statusMeta.value !== "paid" && (
+                          <div
+                            className={`text-xs tabular-nums font-mono ${
+                              statusMeta.value === "overdue" ? "text-destructive font-medium" : "text-muted-foreground"
+                            }`}
+                          >
+                            {statusMeta.value === "overdue" ? t(locale, "expenses.overdueLabel") : t(locale, "expenses.dueLabel")}{" "}
+                            {formatLocaleDate(dueDate, locale, { day: "2-digit", month: "short" })}
+                          </div>
+                        )}
+                      </td>
+
+                      <td className="px-3 py-3 hidden md:table-cell">
+                        {expense.category ? (
+                          <span className="text-xs text-muted-foreground">{expense.category.name}</span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground/30">—</span>
+                        )}
+                      </td>
+
+                      <td className="px-3 py-3 text-right whitespace-nowrap">
+                        <span className="font-mono text-sm tabular-nums font-semibold text-foreground">
+                          {expense.total === null
+                            ? "—"
+                            : formatLocaleCurrency(expense.total, expense.currencyCode ?? "EUR", locale)}
+                        </span>
+                      </td>
+
+                      <td className="px-3 py-3 text-right hidden sm:table-cell">
+                        <span className={`inline-flex items-center text-xs px-2 py-0.5 rounded-full font-medium ${statusMeta.className}`}>
+                          {statusMeta.label}
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </React.Fragment>
+            ))}
+          </tbody>
+        </table>
       )}
     </div>
   )

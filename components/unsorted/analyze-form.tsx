@@ -1,6 +1,5 @@
 "use client"
 
-import { useNotification } from "@/app/(app)/context"
 import { analyzeFileAction, deleteUnsortedFileAction, saveFileAsTransactionAction } from "@/app/(app)/unsorted/actions"
 import { CurrencyConverterTool } from "@/components/agents/currency-converter"
 import { ItemsDetectTool } from "@/components/agents/items-detect"
@@ -11,12 +10,69 @@ import { FormSelectCurrency } from "@/components/forms/select-currency"
 import { FormSelectProject } from "@/components/forms/select-project"
 import { FormSelectType } from "@/components/forms/select-type"
 import { FormInput, FormTextarea } from "@/components/forms/simple"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { t } from "@/lib/i18n"
+import { formatLocaleCurrency, formatLocaleDate, type UiLocale } from "@/lib/locale"
+import { TransactionData } from "@/models/transactions"
 import { Category, Currency, Field, File, Project } from "@/prisma/client"
-import { format } from "date-fns"
-import { ArrowDownToLine, Brain, Loader2, Trash2 } from "lucide-react"
-import { startTransition, useActionState, useMemo, useState } from "react"
+import { AlertTriangle, ArrowDownToLine, Brain, Loader2, Trash2 } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { useEffect, useMemo, useRef, useState, useTransition } from "react"
+import { toast } from "sonner"
+
+function parseAmount(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim()
+    if (!trimmed) return null
+    const parsed = Number.parseFloat(trimmed)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+
+  return null
+}
+
+function parseDateInput(value: unknown): Date | null {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value
+  }
+
+  if (typeof value !== "string") {
+    return null
+  }
+
+  const trimmed = value.trim()
+  if (!trimmed) return null
+
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? `${trimmed}T00:00:00` : trimmed
+  const date = new Date(normalized)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function normalizeDateField(value: unknown): string {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10)
+  }
+
+  if (typeof value !== "string") {
+    return ""
+  }
+
+  const trimmed = value.trim()
+  if (!trimmed) return ""
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed
+  }
+
+  const parsed = parseDateInput(trimmed)
+  return parsed ? parsed.toISOString().slice(0, 10) : ""
+}
 
 export default function AnalyzeForm({
   file,
@@ -25,6 +81,8 @@ export default function AnalyzeForm({
   currencies,
   fields,
   settings,
+  locale,
+  hasNextFile,
 }: {
   file: File
   categories: Category[]
@@ -32,14 +90,19 @@ export default function AnalyzeForm({
   currencies: Currency[]
   fields: Field[]
   settings: Record<string, string>
+  locale: UiLocale
+  hasNextFile: boolean
 }) {
-  const { showNotification } = useNotification()
+  const router = useRouter()
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analyzeStep, setAnalyzeStep] = useState<string>("")
   const [analyzeError, setAnalyzeError] = useState<string>("")
-  const [deleteState, deleteAction, isDeleting] = useActionState(deleteUnsortedFileAction, null)
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState("")
+  const [requiresWarningReview, setRequiresWarningReview] = useState(false)
+  const [isDeletePending, startDeleteTransition] = useTransition()
+  const warningRef = useRef<HTMLDivElement | null>(null)
+  const dirtyFieldsRef = useRef<Set<string>>(new Set())
 
   const fieldMap = useMemo(() => {
     return fields.reduce(
@@ -58,9 +121,9 @@ export default function AnalyzeForm({
       merchant: "",
       description: "",
       type: settings.default_type,
-      total: 0.0,
+      total: "",
       currencyCode: settings.default_currency,
-      convertedTotal: 0.0,
+      convertedTotal: "",
       convertedCurrencyCode: settings.default_currency,
       categoryCode: settings.default_category,
       projectCode: settings.default_project,
@@ -79,46 +142,182 @@ export default function AnalyzeForm({
       {} as Record<string, string>
     )
 
-    // Load cached results if they exist
-    const cachedResults = file.cachedParseResult
-      ? Object.fromEntries(
-          Object.entries(file.cachedParseResult as Record<string, string>).filter(
-            ([_, value]) => value !== null && value !== undefined && value !== ""
+      // Load cached results if they exist
+      const cachedResults = file.cachedParseResult
+        ? Object.fromEntries(
+            Object.entries(file.cachedParseResult as Record<string, unknown>).filter(
+              ([, value]) => value !== null && value !== undefined && value !== ""
+            )
           )
-        )
-      : {}
+        : {}
+
+    const normalizedIssuedAt = normalizeDateField(cachedResults.issuedAt)
 
     return {
       ...baseState,
       ...extraFieldsState,
       ...cachedResults,
+      issuedAt: normalizedIssuedAt,
     }
   }, [file.filename, settings, extraFields, file.cachedParseResult])
   const [formData, setFormData] = useState(initialFormState)
 
+  const typeOptions = useMemo(
+    () => [
+      { code: "expense", name: t(locale, "transactionType.expense"), badge: "↓" },
+      { code: "income", name: t(locale, "transactionType.income"), badge: "↑" },
+      { code: "pending", name: t(locale, "transactionType.pending"), badge: "⏲︎" },
+      { code: "other", name: t(locale, "transactionType.other"), badge: "?" },
+    ],
+    [locale]
+  )
+
+  const warnings = useMemo(() => {
+    const nextWarnings: string[] = []
+    const amount = parseAmount(formData.total)
+    const issueDateRaw = typeof formData.issuedAt === "string" ? formData.issuedAt.trim() : ""
+    const issueDate = parseDateInput(issueDateRaw)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const typeValue = typeof formData.type === "string" ? formData.type.trim() : ""
+    const currencyValue = typeof formData.currencyCode === "string" ? formData.currencyCode.trim() : ""
+
+    if (amount === null) {
+      nextWarnings.push(t(locale, "analyze.warningAmountMissing"))
+    } else if (amount <= 0) {
+      nextWarnings.push(t(locale, "analyze.warningAmountNonPositive"))
+    }
+
+    if (!issueDateRaw) {
+      nextWarnings.push(t(locale, "analyze.warningIssueDateMissing"))
+    } else if (!issueDate) {
+      nextWarnings.push(t(locale, "analyze.warningIssueDateInvalid"))
+    } else if (issueDate > today) {
+      nextWarnings.push(t(locale, "analyze.warningIssueDateFuture"))
+    }
+
+    if (!typeValue) {
+      nextWarnings.push(t(locale, "analyze.warningTypeMissing"))
+    }
+
+    if (amount !== null && amount > 0 && !currencyValue) {
+      nextWarnings.push(t(locale, "analyze.warningCurrencyMissing"))
+    }
+
+    return nextWarnings
+  }, [formData.currencyCode, formData.issuedAt, formData.total, formData.type, locale])
+
+  const warningFingerprint = warnings.join("|")
+  const totalValue = parseAmount(formData.total)
+  const issuedAtValue = parseDateInput(formData.issuedAt)
+  const currencyCode = typeof formData.currencyCode === "string" ? formData.currencyCode : ""
+  const itemsData = useMemo<TransactionData>(
+    () => ({
+      ...formData,
+      total: totalValue,
+      convertedTotal: parseAmount(formData.convertedTotal),
+      issuedAt: issuedAtValue ?? formData.issuedAt,
+    }),
+    [formData, issuedAtValue, totalValue]
+  )
+
+  useEffect(() => {
+    setRequiresWarningReview(false)
+  }, [warningFingerprint])
+
+  const reviewRows = useMemo(() => {
+    const amount = parseAmount(formData.total)
+    const currencyCode =
+      (typeof formData.currencyCode === "string" && formData.currencyCode.trim()) || settings.default_currency || "EUR"
+    const issueDate = parseDateInput(formData.issuedAt)
+    const typeValue = typeof formData.type === "string" ? formData.type.trim() : ""
+    const typeLabel = typeOptions.find((option) => option.code === typeValue)?.name ?? typeValue
+
+    return [
+      {
+        label: t(locale, "analyze.reviewAmount"),
+        value:
+          amount === null
+            ? t(locale, "analyze.missingValue")
+            : formatLocaleCurrency(Math.round(amount * 100), currencyCode, locale),
+        tone: amount === null || amount <= 0 ? "text-amber-700" : "text-foreground",
+      },
+      {
+        label: t(locale, "analyze.reviewIssueDate"),
+        value:
+          issueDate && typeof formData.issuedAt === "string" && formData.issuedAt.trim()
+            ? formatLocaleDate(issueDate, locale, { day: "numeric", month: "short", year: "numeric" })
+            : t(locale, "analyze.missingValue"),
+        tone: issueDate ? "text-foreground" : "text-amber-700",
+      },
+      {
+        label: t(locale, "analyze.reviewType"),
+        value: typeLabel || t(locale, "analyze.missingValue"),
+        tone: typeLabel ? "text-foreground" : "text-amber-700",
+      },
+    ]
+  }, [formData.currencyCode, formData.issuedAt, formData.total, formData.type, locale, settings.default_currency, typeOptions])
+
+  const updateField = (name: string, value: unknown) => {
+    dirtyFieldsRef.current.add(name)
+    setFormData((prev) => ({ ...prev, [name]: value }))
+  }
+
+  async function handleDelete() {
+    startDeleteTransition(async () => {
+      const result = await deleteUnsortedFileAction(null, file.id)
+
+      if (result.success) {
+        toast.success(t(locale, "analyze.deleteSuccess"))
+        router.refresh()
+        return
+      }
+
+      toast.error(result.error || (locale === "nl" ? "Bestand verwijderen mislukt" : "Failed to delete file"))
+    })
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    if (warnings.length > 0 && !requiresWarningReview) {
+      event.preventDefault()
+      setRequiresWarningReview(true)
+      warningRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
+    }
+  }
+
   async function saveAsTransaction(formData: FormData) {
     setSaveError("")
     setIsSaving(true)
-    startTransition(async () => {
-      const result = await saveFileAsTransactionAction(null, formData)
-      setIsSaving(false)
+    const result = await saveFileAsTransactionAction(null, formData)
+    setIsSaving(false)
 
-      if (result.success) {
-        showNotification({ code: "global.banner", message: "Saved!", type: "success" })
-        showNotification({ code: "sidebar.transactions", message: "new" })
-        setTimeout(() => showNotification({ code: "sidebar.transactions", message: "" }), 3000)
+    if (result.success && result.data) {
+      toast.success(t(locale, "analyze.saveToastTitle"), {
+        description: hasNextFile
+          ? t(locale, "analyze.saveToastDescription")
+          : t(locale, "analyze.saveLastToastDescription"),
+        action: {
+          label: t(locale, "common.openExpense"),
+          onClick: () => router.push(`/expenses/${result.data?.id}`),
+        },
+      })
+      if (hasNextFile) {
+        router.refresh()
       } else {
-        setSaveError(result.error ? result.error : "Something went wrong...")
-        showNotification({ code: "global.banner", message: "Failed to save", type: "failed" })
+        router.replace("/unsorted?saved=1")
       }
-    })
+    } else {
+      const message = result.error ? result.error : t(locale, "analyze.saveFailed")
+      setSaveError(message)
+      toast.error(message)
+    }
   }
 
   const startAnalyze = async () => {
     setIsAnalyzing(true)
     setAnalyzeError("")
     try {
-      setAnalyzeStep("Analyzing...")
+      setAnalyzeStep(t(locale, "analyze.analyzing"))
       const results = await analyzeFileAction(file, settings, fields, categories, projects)
 
       console.log("Analysis results:", results)
@@ -128,10 +327,17 @@ export default function AnalyzeForm({
       } else {
         const nonEmptyFields = Object.fromEntries(
           Object.entries(results.data?.output || {}).filter(
-            ([_, value]) => value !== null && value !== undefined && value !== ""
+            ([, value]) => value !== null && value !== undefined && value !== ""
           )
         )
-        setFormData({ ...formData, ...nonEmptyFields })
+        setFormData((prev) => {
+          const next = { ...prev } as Record<string, unknown>
+          for (const [key, value] of Object.entries(nonEmptyFields)) {
+            if (dirtyFieldsRef.current.has(key)) continue
+            next[key] = key === "issuedAt" ? normalizeDateField(value) : value
+          }
+          return next as typeof prev
+        })
       }
     } catch (error) {
       console.error("Analysis failed:", error)
@@ -146,7 +352,7 @@ export default function AnalyzeForm({
     <>
       {file.isSplitted ? (
         <div className="flex justify-end">
-          <Badge variant="outline">This file has been split up</Badge>
+          <Badge variant="outline">{locale === "nl" ? "Dit bestand is opgesplitst" : "This file has been split up"}</Badge>
         </div>
       ) : (
         <Button className="w-full mb-6 py-6 text-lg" onClick={startAnalyze} disabled={isAnalyzing} data-analyze-button>
@@ -158,7 +364,7 @@ export default function AnalyzeForm({
           ) : (
             <>
               <Brain className="mr-1 h-4 w-4" />
-              <span>Analyze with AI</span>
+              <span>{t(locale, "analyze.analyzeWithAI")}</span>
             </>
           )}
         </Button>
@@ -166,13 +372,47 @@ export default function AnalyzeForm({
 
       <div>{analyzeError && <FormError>{analyzeError}</FormError>}</div>
 
-      <form className="space-y-4" action={saveAsTransaction}>
+      <form className="space-y-4" action={saveAsTransaction} onSubmit={handleSubmit}>
         <input type="hidden" name="fileId" value={file.id} />
+
+        <div className="rounded-lg border bg-muted/20 p-4">
+          <div className="text-sm font-semibold">{t(locale, "analyze.reviewTitle")}</div>
+          <p className="mt-1 text-sm text-muted-foreground">{t(locale, "analyze.reviewDescription")}</p>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            {reviewRows.map((row) => (
+              <div key={row.label} className="rounded-md border bg-background px-3 py-2">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">{row.label}</div>
+                <div className={`mt-1 text-sm font-medium ${row.tone}`}>{row.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {warnings.length > 0 && (
+          <div ref={warningRef}>
+            <Alert className="border-amber-200 bg-amber-50 text-amber-900">
+              <AlertTriangle className="h-4 w-4" />
+              <div>
+                <AlertTitle>{t(locale, "analyze.warningTitle")}</AlertTitle>
+                <AlertDescription>
+                  <p>{t(locale, "analyze.warningDescription")}</p>
+                  <ul className="mt-2 list-disc pl-4">
+                    {warnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
+                    ))}
+                  </ul>
+                  {requiresWarningReview && <p className="mt-2 font-medium">{t(locale, "analyze.savePrompt")}</p>}
+                </AlertDescription>
+              </div>
+            </Alert>
+          </div>
+        )}
+
         <FormInput
           title={fieldMap.name.name}
           name="name"
           value={formData.name}
-          onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+          onChange={(e) => updateField("name", e.target.value)}
           required={fieldMap.name.isRequired}
         />
 
@@ -180,7 +420,7 @@ export default function AnalyzeForm({
           title={fieldMap.merchant.name}
           name="merchant"
           value={formData.merchant}
-          onChange={(e) => setFormData((prev) => ({ ...prev, merchant: e.target.value }))}
+          onChange={(e) => updateField("merchant", e.target.value)}
           hideIfEmpty={!fieldMap.merchant.isVisibleInAnalysis}
           required={fieldMap.merchant.isRequired}
         />
@@ -189,7 +429,7 @@ export default function AnalyzeForm({
           title={fieldMap.description.name}
           name="description"
           value={formData.description}
-          onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+          onChange={(e) => updateField("description", e.target.value)}
           hideIfEmpty={!fieldMap.description.isVisibleInAnalysis}
           required={fieldMap.description.isRequired}
         />
@@ -200,10 +440,16 @@ export default function AnalyzeForm({
             name="total"
             type="number"
             step="0.01"
-            value={formData.total || ""}
+            value={formData.total ?? ""}
             onChange={(e) => {
-              const newValue = parseFloat(e.target.value || "0")
-              !isNaN(newValue) && setFormData((prev) => ({ ...prev, total: newValue }))
+              if (e.target.value === "") {
+                updateField("total", "")
+                return
+              }
+              const newValue = parseFloat(e.target.value)
+              if (!isNaN(newValue)) {
+                updateField("total", newValue)
+              }
             }}
             className="w-32"
             required={fieldMap.total.isRequired}
@@ -214,29 +460,42 @@ export default function AnalyzeForm({
             currencies={currencies}
             name="currencyCode"
             value={formData.currencyCode}
-            onValueChange={(value) => setFormData((prev) => ({ ...prev, currencyCode: value }))}
+            onValueChange={(value) => updateField("currencyCode", value)}
             hideIfEmpty={!fieldMap.currencyCode.isVisibleInAnalysis}
-            required={fieldMap.currencyCode.isRequired}
+            isRequired={fieldMap.currencyCode.isRequired}
           />
 
           <FormSelectType
             title={fieldMap.type.name}
             name="type"
             value={formData.type}
-            onValueChange={(value) => setFormData((prev) => ({ ...prev, type: value }))}
+            onValueChange={(value) => updateField("type", value)}
             hideIfEmpty={!fieldMap.type.isVisibleInAnalysis}
-            required={fieldMap.type.isRequired}
+            isRequired={fieldMap.type.isRequired}
+            options={typeOptions}
           />
         </div>
 
-        {formData.total != 0 && formData.currencyCode && formData.currencyCode !== settings.default_currency && (
-          <ToolWindow title={`Exchange rate on ${format(new Date(formData.issuedAt || Date.now()), "LLLL dd, yyyy")}`}>
+        {totalValue !== null &&
+          totalValue !== 0 &&
+          currencyCode &&
+          currencyCode !== settings.default_currency && (
+          <ToolWindow
+            title={t(locale, "analyze.exchangeRateTitle", {
+              date: formatLocaleDate(issuedAtValue ?? new Date(), locale, {
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+              }),
+            })}
+          >
             <CurrencyConverterTool
-              originalTotal={formData.total}
-              originalCurrencyCode={formData.currencyCode}
+              originalTotal={totalValue}
+              originalCurrencyCode={currencyCode}
               targetCurrencyCode={settings.default_currency}
-              date={new Date(formData.issuedAt || Date.now())}
-              onChange={(value) => setFormData((prev) => ({ ...prev, convertedTotal: value }))}
+              date={issuedAtValue ?? new Date()}
+              onChange={(value) => updateField("convertedTotal", value)}
+              locale={locale}
             />
             <input type="hidden" name="convertedCurrencyCode" value={settings.default_currency} />
           </ToolWindow>
@@ -248,7 +507,7 @@ export default function AnalyzeForm({
             type="date"
             name="issuedAt"
             value={formData.issuedAt}
-            onChange={(e) => setFormData((prev) => ({ ...prev, issuedAt: e.target.value }))}
+            onChange={(e) => updateField("issuedAt", e.target.value)}
             hideIfEmpty={!fieldMap.issuedAt.isVisibleInAnalysis}
             required={fieldMap.issuedAt.isRequired}
           />
@@ -260,10 +519,10 @@ export default function AnalyzeForm({
             categories={categories}
             name="categoryCode"
             value={formData.categoryCode}
-            onValueChange={(value) => setFormData((prev) => ({ ...prev, categoryCode: value }))}
-            placeholder="Select Category"
+            onValueChange={(value) => updateField("categoryCode", value)}
+            placeholder={t(locale, "analyze.selectCategory")}
             hideIfEmpty={!fieldMap.categoryCode.isVisibleInAnalysis}
-            required={fieldMap.categoryCode.isRequired}
+            isRequired={fieldMap.categoryCode.isRequired}
           />
 
           {projects.length > 0 && (
@@ -272,10 +531,10 @@ export default function AnalyzeForm({
               projects={projects}
               name="projectCode"
               value={formData.projectCode}
-              onValueChange={(value) => setFormData((prev) => ({ ...prev, projectCode: value }))}
-              placeholder="Select Project"
+              onValueChange={(value) => updateField("projectCode", value)}
+              placeholder={t(locale, "analyze.selectProject")}
               hideIfEmpty={!fieldMap.projectCode.isVisibleInAnalysis}
-              required={fieldMap.projectCode.isRequired}
+              isRequired={fieldMap.projectCode.isRequired}
             />
           )}
         </div>
@@ -284,7 +543,7 @@ export default function AnalyzeForm({
           title={fieldMap.note.name}
           name="note"
           value={formData.note}
-          onChange={(e) => setFormData((prev) => ({ ...prev, note: e.target.value }))}
+          onChange={(e) => updateField("note", e.target.value)}
           hideIfEmpty={!fieldMap.note.isVisibleInAnalysis}
           required={fieldMap.note.isRequired}
         />
@@ -296,15 +555,15 @@ export default function AnalyzeForm({
             title={field.name}
             name={field.code}
             value={formData[field.code as keyof typeof formData]}
-            onChange={(e) => setFormData((prev) => ({ ...prev, [field.code]: e.target.value }))}
+            onChange={(e) => updateField(field.code, e.target.value)}
             hideIfEmpty={!field.isVisibleInAnalysis}
             required={field.isRequired}
           />
         ))}
 
-        {formData.items && formData.items.length > 0 && (
-          <ToolWindow title="Detected items">
-            <ItemsDetectTool file={file} data={formData} />
+        {Array.isArray(formData.items) && formData.items.length > 0 && (
+          <ToolWindow title={t(locale, "analyze.detectedItems")}>
+            <ItemsDetectTool file={file} data={itemsData} locale={locale} />
           </ToolWindow>
         )}
 
@@ -314,7 +573,7 @@ export default function AnalyzeForm({
             title={fieldMap.text.name}
             name="text"
             value={formData.text}
-            onChange={(e) => setFormData((prev) => ({ ...prev, text: e.target.value }))}
+            onChange={(e) => updateField("text", e.target.value)}
             hideIfEmpty={!fieldMap.text.isVisibleInAnalysis}
           />
         </div>
@@ -322,31 +581,32 @@ export default function AnalyzeForm({
         <div className="flex justify-between gap-4 pt-6">
           <Button
             type="button"
-            onClick={() => startTransition(() => deleteAction(file.id))}
+            onClick={handleDelete}
             variant="destructive"
-            disabled={isDeleting}
+            disabled={isDeletePending}
           >
             <Trash2 className="h-4 w-4" />
-            {isDeleting ? "⏳ Deleting..." : "Delete"}
+            {isDeletePending ? t(locale, "common.deleting") : t(locale, "common.delete")}
           </Button>
 
           <Button type="submit" disabled={isSaving} data-save-button>
             {isSaving ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving...
+                {t(locale, "common.saving")}
               </>
             ) : (
               <>
                 <ArrowDownToLine className="h-4 w-4" />
-                Save as Transaction
+                {warnings.length > 0 && requiresWarningReview
+                  ? t(locale, "common.saveAnyway")
+                  : t(locale, "analyze.saveAsTransaction")}
               </>
             )}
           </Button>
         </div>
 
         <div>
-          {deleteState?.error && <FormError>{deleteState.error}</FormError>}
           {saveError && <FormError>{saveError}</FormError>}
         </div>
       </form>

@@ -1,27 +1,15 @@
 import { clsx, type ClassValue } from "clsx"
+import { DEFAULT_UI_LOCALE, formatLocaleCurrency, formatLocaleNumber, formatLocalePeriodLabel, type UiLocale } from "@/lib/locale"
 import slugify from "slugify"
 import { twMerge } from "tailwind-merge"
 import { violet, tomato, red, crimson, pink, plum, purple, indigo, blue, sky, cyan, teal, mint, grass, lime, yellow, amber, orange, brown } from "@radix-ui/colors"
-
-const LOCALE = "en-US"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function formatCurrency(total: number, currency: string) {
-  try {
-    return new Intl.NumberFormat(LOCALE, {
-      style: "currency",
-      currency: currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-      useGrouping: true,
-    }).format(total / 100)
-  } catch (error) {
-    // can happen with custom currencies and crypto
-    return `${currency} ${total / 100}`
-  }
+export function formatCurrency(total: number, currency: string, locale: UiLocale = DEFAULT_UI_LOCALE) {
+  return formatLocaleCurrency(total, currency, locale)
 }
 
 export function formatBytes(bytes: number) {
@@ -36,10 +24,8 @@ export function formatBytes(bytes: number) {
   return `${parseFloat(value.toFixed(2))} ${sizes[i]}`
 }
 
-export function formatNumber(number: number) {
-  return new Intl.NumberFormat(LOCALE, {
-    useGrouping: true,
-  }).format(number)
+export function formatNumber(number: number, locale: UiLocale = DEFAULT_UI_LOCALE) {
+  return formatLocaleNumber(number, locale)
 }
 
 export function codeFromName(name: string, maxLength: number = 16) {
@@ -108,7 +94,7 @@ export function generateUUID(): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
     try {
       return crypto.randomUUID()
-    } catch (error) {
+    } catch {
       // Fall through to next method
     }
   }
@@ -126,7 +112,7 @@ export function generateUUID(): string {
       // Convert to UUID string format
       const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")
       return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20, 32)].join("-")
-    } catch (error) {
+    } catch {
       // Fall through to Math.random() fallback
     }
   }
@@ -139,20 +125,6 @@ export function generateUUID(): string {
   })
 }
 
-export function formatPeriodLabel(period: string, date: Date): string {
-  if (period.includes("-") && period.split("-").length === 3) {
-    // Daily format: show day/month/year
-    return date.toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    })
-  } else {
-    // Monthly format: show month/year with short month name
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      year: "numeric",
-    })
-  }
+export function formatPeriodLabel(period: string, date: Date, locale: UiLocale = DEFAULT_UI_LOCALE): string {
+  return formatLocalePeriodLabel(period, date, locale)
 }

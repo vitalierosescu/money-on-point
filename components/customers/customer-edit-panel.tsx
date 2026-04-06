@@ -1,25 +1,27 @@
 "use client"
 
 import { createCustomerAction, updateCustomerAction } from "@/app/(app)/customers/actions"
+import {
+  getCustomerInvoiceDeliveryMethodLabel,
+  normalizeCustomerInvoiceDeliveryMethod,
+} from "@/lib/invoice-delivery"
 import { Button } from "@/components/ui/button"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { Textarea } from "@/components/ui/textarea"
 import { Customer } from "@/prisma/client"
-import { ChevronDown } from "lucide-react"
 import { useState } from "react"
 
 interface CustomerEditPanelProps {
   customer?: Customer | null
   trigger: React.ReactNode
-  onSuccess?: () => void
+  onSuccess?: (customer: Customer) => void
 }
 
 export function CustomerEditPanel({ customer, trigger, onSuccess }: CustomerEditPanelProps) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [detailsOpen, setDetailsOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -49,18 +51,23 @@ export function CustomerEditPanel({ customer, trigger, onSuccess }: CustomerEdit
       city: (fd.get("city") as string) || null,
       country: (fd.get("country") as string) || "Belgium",
       vatNumber: (fd.get("vatNumber") as string) || null,
+      peppolId: (fd.get("peppolId") as string) || null,
+      invoiceDeliveryMethod: normalizeCustomerInvoiceDeliveryMethod(fd.get("invoiceDeliveryMethod") as string),
       defaultCurrency: (fd.get("defaultCurrency") as string) || null,
       note: (fd.get("note") as string) || null,
     }
 
     try {
+      let result: { success: boolean; data?: Customer }
       if (customer) {
-        await updateCustomerAction(customer.id, data)
+        result = await updateCustomerAction(customer.id, data)
       } else {
-        await createCustomerAction(data)
+        result = await createCustomerAction(data)
       }
       setOpen(false)
-      onSuccess?.()
+      if (result.data) {
+        onSuccess?.(result.data)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong")
     } finally {
@@ -71,6 +78,7 @@ export function CustomerEditPanel({ customer, trigger, onSuccess }: CustomerEdit
   const billingEmailsDefault = Array.isArray(customer?.billingEmails)
     ? (customer.billingEmails as string[]).join(", ")
     : ""
+  const deliveryMethod = normalizeCustomerInvoiceDeliveryMethod(customer?.invoiceDeliveryMethod)
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -113,69 +121,76 @@ export function CustomerEditPanel({ customer, trigger, onSuccess }: CustomerEdit
             <Input id="contactPerson" name="contactPerson" defaultValue={customer?.contactPerson ?? ""} />
           </div>
 
-          <Collapsible open={detailsOpen} onOpenChange={setDetailsOpen}>
-            <CollapsibleTrigger asChild>
-              <Button type="button" variant="ghost" className="w-full justify-between px-0">
-                <span className="font-medium">Details</span>
-                <ChevronDown className={`h-4 w-4 transition-transform ${detailsOpen ? "rotate-180" : ""}`} />
-              </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="space-y-4 pt-2">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="street">Street</Label>
-                  <Input id="street" name="street" defaultValue={customer?.street ?? ""} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="houseNumber">House Number</Label>
-                  <Input id="houseNumber" name="houseNumber" defaultValue={customer?.houseNumber ?? ""} />
-                </div>
-              </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="street">Street</Label>
+              <Input id="street" name="street" defaultValue={customer?.street ?? ""} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="houseNumber">House Number</Label>
+              <Input id="houseNumber" name="houseNumber" defaultValue={customer?.houseNumber ?? ""} />
+            </div>
+          </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="bus">Bus</Label>
-                  <Input id="bus" name="bus" defaultValue={customer?.bus ?? ""} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="zipCode">ZIP Code</Label>
-                  <Input id="zipCode" name="zipCode" defaultValue={customer?.zipCode ?? ""} />
-                </div>
-              </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="bus">Bus</Label>
+              <Input id="bus" name="bus" defaultValue={customer?.bus ?? ""} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="zipCode">ZIP Code</Label>
+              <Input id="zipCode" name="zipCode" defaultValue={customer?.zipCode ?? ""} />
+            </div>
+          </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="city">City</Label>
-                  <Input id="city" name="city" defaultValue={customer?.city ?? ""} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="country">Country</Label>
-                  <Input id="country" name="country" defaultValue={customer?.country ?? "Belgium"} />
-                </div>
-              </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="city">City</Label>
+              <Input id="city" name="city" defaultValue={customer?.city ?? ""} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="country">Country</Label>
+              <Input id="country" name="country" defaultValue={customer?.country ?? "Belgium"} />
+            </div>
+          </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="vatNumber">VAT Number</Label>
-                  <Input id="vatNumber" name="vatNumber" defaultValue={customer?.vatNumber ?? ""} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="defaultCurrency">Default Currency</Label>
-                  <Input id="defaultCurrency" name="defaultCurrency" defaultValue={customer?.defaultCurrency ?? "EUR"} />
-                </div>
-              </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="vatNumber">VAT Number</Label>
+              <Input id="vatNumber" name="vatNumber" defaultValue={customer?.vatNumber ?? ""} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="peppolId">PEPPOL ID</Label>
+              <Input id="peppolId" name="peppolId" defaultValue={customer?.peppolId ?? ""} placeholder="0208:0123456789" />
+            </div>
+          </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="note">Note</Label>
-                <textarea
-                  id="note"
-                  name="note"
-                  defaultValue={customer?.note ?? ""}
-                  className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                />
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="defaultCurrency">Default Currency</Label>
+              <Input id="defaultCurrency" name="defaultCurrency" defaultValue={customer?.defaultCurrency ?? "EUR"} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="invoiceDeliveryMethod">Delivery Method</Label>
+              <select
+                id="invoiceDeliveryMethod"
+                name="invoiceDeliveryMethod"
+                defaultValue={deliveryMethod}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                {(["manual_choice", "email_pdf", "peppol"] as const).map((method) => (
+                  <option key={method} value={method}>
+                    {getCustomerInvoiceDeliveryMethodLabel(method)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="note">Note</Label>
+            <Textarea id="note" name="note" defaultValue={customer?.note ?? ""} className="min-h-[80px]" />
+          </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
 

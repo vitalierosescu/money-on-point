@@ -1,11 +1,12 @@
-import { InvoiceStatusBadge } from "@/components/invoices/invoice-status-badge"
+import { CustomerDetail } from "@/components/customers/customer-detail"
+import { PageShell } from "@/components/ui/page-shell"
 import { getCurrentUser } from "@/lib/auth"
 import { getCustomerById, getInvoicesByCustomer } from "@/models/customers"
 import { Metadata } from "next"
-import Link from "next/link"
 import { notFound } from "next/navigation"
 
 export const metadata: Metadata = { title: "Customer" }
+export const dynamic = "force-dynamic"
 
 export default async function CustomerDetailPage({
   params,
@@ -20,35 +21,8 @@ export default async function CustomerDetailPage({
   const invoices = await getInvoicesByCustomer(id, user.id)
 
   return (
-    <div className="max-w-4xl">
-      <header className="mb-8">
-        <h2 className="text-3xl font-bold tracking-tight">{customer.name}</h2>
-        {customer.email && <p className="text-muted-foreground">{customer.email}</p>}
-      </header>
-
-      <div className="space-y-4">
-        <h3 className="font-semibold text-lg">Invoices</h3>
-        {invoices.length === 0 ? (
-          <p className="text-muted-foreground">No invoices yet.</p>
-        ) : (
-          <div className="border rounded-lg divide-y">
-            {invoices.map((inv) => (
-              <div key={inv.id} className="flex items-center justify-between p-4">
-                <div>
-                  <Link href={`/invoices/${inv.id}`} className="font-medium hover:underline">
-                    {inv.invoiceNumber}
-                  </Link>
-                  {inv.subject && <p className="text-sm text-muted-foreground">{inv.subject}</p>}
-                </div>
-                <div className="flex items-center gap-4">
-                  <span className="text-sm">{inv.currency} {(inv.total / 100).toFixed(2)}</span>
-                  <InvoiceStatusBadge status={inv.status} />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+    <PageShell>
+      <CustomerDetail customer={customer} invoices={invoices} />
+    </PageShell>
   )
 }

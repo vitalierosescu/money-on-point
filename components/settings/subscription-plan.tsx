@@ -15,30 +15,30 @@ export function SubscriptionPlan({ user }: { user: User }) {
   const plan = PLANS[user.membershipPlan as keyof typeof PLANS] || PLANS.unlimited
 
   return (
-    <div className="flex flex-wrap gap-5">
-      <div className="flex flex-col gap-2 flex-1 items-center justify-center max-w-[300px]">
+    <div className="flex flex-wrap gap-space-5">
+      <div className="flex flex-col gap-space-2 flex-1 items-center justify-center max-w-[300px]">
         <PricingCard plan={plan} hideButton={true} />
         <Badge variant="outline">Current Plan</Badge>
       </div>
       <div className="flex-1">
-        <Card className="w-full p-4">
-          <div className="space-y-2">
+        <Card className="w-full p-space-4">
+          <div className="space-y-space-2">
             <strong className="text-lg">Usage:</strong>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-space-2">
               <HardDrive className="h-4 w-4" />
               <span>
                 <strong className="font-semibold">Storage:</strong> {formatBytes(user.storageUsed)} /{" "}
                 {user.storageLimit > 0 ? formatBytes(user.storageLimit) : "Unlimited"}
               </span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-space-2">
               <BrainCog className="h-4 w-4" />
               <span>
                 <strong className="font-semibold">AI Analyses:</strong> {formatNumber(plan.limits.ai - user.aiBalance)}{" "}
                 / {plan.limits.ai > 0 ? formatNumber(plan.limits.ai) : "Unlimited"}
               </span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-space-2">
               <CalendarSync className="h-4 w-4" />
               <span>
                 <strong className="font-semibold">Expiration Date:</strong>{" "}
@@ -47,7 +47,7 @@ export function SubscriptionPlan({ user }: { user: User }) {
             </div>
           </div>
 
-          <div className="space-y-4 mt-6 text-center">
+          <div className="space-y-space-4 mt-space-6 text-center">
             {user.stripeCustomerId && (
               <Button asChild className="w-full">
                 <Link href="/api/stripe/portal">Manage Subscription</Link>

@@ -21,7 +21,7 @@ import { updateUser } from "@/models/users"
 import { Category, Field, File, Project, Transaction } from "@/prisma/client"
 import { randomUUID } from "crypto"
 import { mkdir, readFile, rename, writeFile } from "fs/promises"
-import { revalidatePath } from "next/cache"
+import { revalidatePath, revalidateTag } from "next/cache"
 import path from "path"
 
 export async function analyzeFileAction(
@@ -74,6 +74,7 @@ export async function analyzeFileAction(
 
   if (results.data?.tokensUsed && results.data.tokensUsed > 0) {
     await updateUser(user.id, { aiBalance: { decrement: 1 } })
+    revalidateTag(`user:${user.id}`)
   }
 
   return results
@@ -125,6 +126,7 @@ export async function saveFileAsTransactionAction(
 
     await updateTransactionFiles(transaction.id, user.id, [file.id])
 
+    revalidateTag(`unsorted:${user.id}`)
     revalidatePath("/unsorted")
     revalidatePath("/expenses")
 
@@ -142,6 +144,7 @@ export async function deleteUnsortedFileAction(
   try {
     const user = await getCurrentUser()
     await deleteFile(fileId, user.id)
+    revalidateTag(`unsorted:${user.id}`)
     revalidatePath("/unsorted")
     return { success: true }
   } catch (error) {
@@ -193,7 +196,7 @@ export async function splitFileIntoItemsAction(
         filename: fileName,
         path: relativeFilePath,
         mimetype: originalFile.mimetype,
-        metadata: originalFile.metadata,
+        metadata: originalFile.metadata ?? undefined,
         isSplitted: true,
         cachedParseResult: {
           name: item.name,
@@ -218,6 +221,8 @@ export async function splitFileIntoItemsAction(
     const storageUsed = await getDirectorySize(getUserUploadsDirectory(user))
     await updateUser(user.id, { storageUsed })
 
+    revalidateTag(`unsorted:${user.id}`)
+    revalidateTag(`user:${user.id}`)
     revalidatePath("/unsorted")
     return { success: true }
   } catch (error) {

@@ -182,6 +182,9 @@ Set up your local development environment:
 git clone https://github.com/vas3k/TaxHacker.git
 cd TaxHacker
 
+# Use the pinned Node version
+nvm use
+
 # Install dependencies
 npm install
 
@@ -200,6 +203,26 @@ npm run dev
 ```
 
 Visit `http://localhost:7331` to see your local TaxHacker instance in action.
+
+> [!IMPORTANT]
+>
+> TaxHacker now expects **Node 20** for local development and production builds. The pinned version is defined in [`.nvmrc`](./.nvmrc).
+
+Before opening a PR or cutting a release, run the local quality gates:
+
+```bash
+npm run typecheck
+npm run lint
+npm run build
+```
+
+There is also a Playwright smoke suite for the core solo workflow:
+
+```bash
+E2E_SMOKE_ENABLED=1 npm run test:e2e
+```
+
+This smoke suite expects a runnable local instance and a prepared test environment.
 
 For a production build, instead of `npm run dev` use the following commands:
 

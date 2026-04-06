@@ -667,15 +667,15 @@ export function InvoiceGenerator({
 
             <section className="rounded-xl border bg-card p-5">
               {readinessBlockers.length > 0 ? (
-                <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
-                  <ul className="space-y-1 text-sm text-amber-900">
+                <div className="mb-4 rounded-lg border border-warning/30 bg-warning/10 p-3">
+                  <ul className="space-y-1 text-sm text-warning">
                     {readinessBlockers.map((blocker) => (
                       <li key={blocker}>&bull; {blocker}</li>
                     ))}
                   </ul>
                 </div>
               ) : (
-                <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+                <div className="mb-4 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
                   Klaar om te verzenden.
                 </div>
               )}

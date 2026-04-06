@@ -28,6 +28,9 @@ export const getDashboardStats = cache(
         status: "paid",
         ...(dateFilter ? { paidAt: dateFilter } : {}),
       },
+      include: {
+        transaction: true,
+      },
     })
 
     // Expenses: from paid expense Transactions
@@ -40,22 +43,22 @@ export const getDashboardStats = cache(
       },
     })
 
-    // Build per-currency totals for income
+    // Build per-currency totals for income, preferring converted values on linked transactions
     const totalIncomePerCurrency: Record<string, number> = {}
     for (const inv of paidInvoices) {
-      const c = inv.currency
-      totalIncomePerCurrency[c] = (totalIncomePerCurrency[c] ?? 0) + inv.total
+      const convertedCurrency = inv.transaction?.convertedCurrencyCode?.toUpperCase()
+      const originalCurrency = inv.currency.toUpperCase()
+      const currency = convertedCurrency || originalCurrency
+      const amount = convertedCurrency ? (inv.transaction?.convertedTotal ?? 0) : inv.total
+      totalIncomePerCurrency[currency] = (totalIncomePerCurrency[currency] ?? 0) + amount
     }
 
-    // Build per-currency totals for expenses
-    const totalExpensesPerCurrency: Record<string, number> = {}
-    for (const exp of paidExpenses) {
-      const c = exp.currencyCode ?? "EUR"
-      totalExpensesPerCurrency[c] = (totalExpensesPerCurrency[c] ?? 0) + (exp.total ?? 0)
-    }
+    // Build per-currency totals for expenses, preferring converted values when available
+    const totalExpensesPerCurrency = calcTotalPerCurrency(paidExpenses)
 
+    const allCurrencies = new Set([...Object.keys(totalIncomePerCurrency), ...Object.keys(totalExpensesPerCurrency)])
     const profitPerCurrency = Object.fromEntries(
-      Object.keys(totalIncomePerCurrency).map((currency) => [
+      Array.from(allCurrencies).map((currency) => [
         currency,
         (totalIncomePerCurrency[currency] ?? 0) - (totalExpensesPerCurrency[currency] ?? 0),
       ])

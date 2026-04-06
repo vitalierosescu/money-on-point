@@ -4,6 +4,8 @@ import { parseYearParam } from "@/lib/parse-year-param"
 import { format as formatCsv } from "@fast-csv/format"
 import { PassThrough } from "stream"
 
+export const dynamic = "force-dynamic"
+
 export async function GET(request: Request) {
   const user = await getCurrentUser()
   const url = new URL(request.url)

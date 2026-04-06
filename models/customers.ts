@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db"
+import { normalizeCustomerInvoiceDeliveryMethod } from "@/lib/invoice-delivery"
 import { Customer, Prisma } from "@/prisma/client"
 import { cache } from "react"
 
@@ -17,6 +18,7 @@ export type CustomerData = {
   country?: string | null
   vatNumber?: string | null
   peppolId?: string | null
+  invoiceDeliveryMethod?: string | null
   defaultRate?: number | null
   defaultCurrency?: string | null
   note?: string | null
@@ -31,12 +33,77 @@ export const getCustomers = cache(
         { name: { contains: search, mode: "insensitive" } },
         { email: { contains: search, mode: "insensitive" } },
         { contactPerson: { contains: search, mode: "insensitive" } },
+        { vatNumber: { contains: search, mode: "insensitive" } },
+        { peppolId: { contains: search, mode: "insensitive" } },
       ]
     }
 
     return prisma.customer.findMany({
       where,
       orderBy: { name: "asc" },
+    })
+  }
+)
+
+export type CustomerWithInvoiceStats = Customer & {
+  lastInvoiceAt: Date | null
+  openInvoicesCount: number
+  overdueInvoicesCount: number
+  openBalanceByCurrency: Record<string, number>
+  totalInvoicesCount: number
+}
+
+const OPEN_INVOICE_STATUSES = ["sent", "overdue", "partially_paid"] as const
+
+export const getCustomersWithInvoiceStats = cache(
+  async (userId: string): Promise<CustomerWithInvoiceStats[]> => {
+    const customers = await prisma.customer.findMany({
+      where: { userId },
+      orderBy: { name: "asc" },
+      include: {
+        invoices: {
+          select: {
+            status: true,
+            total: true,
+            paidAmount: true,
+            currency: true,
+            issuedAt: true,
+          },
+        },
+      },
+    })
+
+    return customers.map((customer) => {
+      const invoices = customer.invoices
+      const lastInvoiceAt = invoices.reduce<Date | null>(
+        (latest, invoice) => {
+          if (!latest) return invoice.issuedAt
+          return invoice.issuedAt > latest ? invoice.issuedAt : latest
+        },
+        null
+      )
+
+      const openInvoices = invoices.filter((invoice) =>
+        OPEN_INVOICE_STATUSES.includes(invoice.status as (typeof OPEN_INVOICE_STATUSES)[number])
+      )
+      const overdueInvoices = invoices.filter((invoice) => invoice.status === "overdue")
+
+      const openBalanceByCurrency: Record<string, number> = {}
+      for (const invoice of openInvoices) {
+        const remaining = Math.max(invoice.total - (invoice.paidAmount ?? 0), 0)
+        if (remaining <= 0) continue
+        const currency = invoice.currency || "EUR"
+        openBalanceByCurrency[currency] = (openBalanceByCurrency[currency] || 0) + remaining
+      }
+
+      return {
+        ...customer,
+        lastInvoiceAt,
+        openInvoicesCount: openInvoices.length,
+        overdueInvoicesCount: overdueInvoices.length,
+        openBalanceByCurrency,
+        totalInvoicesCount: invoices.length,
+      }
     })
   }
 )
@@ -58,6 +125,7 @@ export const createCustomer = async (
       ...data,
       name: data.name ?? "",
       billingEmails: data.billingEmails ?? [],
+      invoiceDeliveryMethod: normalizeCustomerInvoiceDeliveryMethod(data.invoiceDeliveryMethod),
       userId,
     },
   })
@@ -74,6 +142,7 @@ export const updateCustomer = async (
       ...data,
       name: data.name ?? "",
       billingEmails: data.billingEmails ?? [],
+      invoiceDeliveryMethod: normalizeCustomerInvoiceDeliveryMethod(data.invoiceDeliveryMethod),
     },
   })
 }
@@ -110,33 +179,22 @@ export const getCustomerStats = cache(async (userId: string) => {
     },
   })
 
-  const newCustomers = customers.filter(
-    (c) => c.createdAt >= thirtyDaysAgo
-  ).length
+  const newCustomers = customers.filter((c) => c.createdAt >= thirtyDaysAgo).length
+  const noInvoiceCustomersCount = customers.filter((c) => c.invoices.length === 0).length
 
-  const activeCustomers = customers.filter((c) =>
-    c.invoices.some((inv) => inv.issuedAt >= thirtyDaysAgo)
-  )
+  let openInvoicesCount = 0
+  let overdueInvoicesCount = 0
 
-  const mostActive = [...activeCustomers].sort(
-    (a, b) =>
-      b.invoices.filter((i) => i.issuedAt >= thirtyDaysAgo).length -
-      a.invoices.filter((i) => i.issuedAt >= thirtyDaysAgo).length
-  )[0]
+  for (const customer of customers) {
+    for (const invoice of customer.invoices) {
+      if (OPEN_INVOICE_STATUSES.includes(invoice.status as (typeof OPEN_INVOICE_STATUSES)[number])) {
+        openInvoicesCount += 1
+      }
+      if (invoice.status === "overdue") {
+        overdueInvoicesCount += 1
+      }
+    }
+  }
 
-  const topRevenue = [...customers].sort(
-    (a, b) =>
-      b.invoices
-        .filter((i) => i.issuedAt >= thirtyDaysAgo && i.status === "paid")
-        .reduce((sum, i) => sum + i.total, 0) -
-      a.invoices
-        .filter((i) => i.issuedAt >= thirtyDaysAgo && i.status === "paid")
-        .reduce((sum, i) => sum + i.total, 0)
-  )[0]
-
-  const inactiveCount = customers.filter(
-    (c) => !c.invoices.some((inv) => inv.issuedAt >= thirtyDaysAgo)
-  ).length
-
-  return { mostActive, topRevenue, inactiveCount, newCustomers }
+  return { openInvoicesCount, overdueInvoicesCount, noInvoiceCustomersCount, newCustomers }
 })

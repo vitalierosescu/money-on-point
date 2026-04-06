@@ -1,14 +1,23 @@
 import DashboardDropZoneWidget from "@/components/dashboard/drop-zone-widget"
+import { HomeHeroWidget } from "@/components/dashboard/home-hero-widget"
 import { StatsWidget } from "@/components/dashboard/stats-widget"
 import DashboardUnsortedWidget from "@/components/dashboard/unsorted-widget"
 import { WelcomeWidget } from "@/components/dashboard/welcome-widget"
+import { WorkQueueWidget } from "@/components/dashboard/work-queue-widget"
 import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
+import { PageShell } from "@/components/ui/page-shell"
 import { getCurrentUser } from "@/lib/auth"
 import config from "@/lib/config"
-import { getUnsortedFiles } from "@/models/files"
+import { getInvoiceDeliveryMethod, getInvoiceDeliveryReadiness, getPeppolBusinessReadiness } from "@/lib/invoice-delivery"
+import { getActiveRecommandEnvironment, hasConfiguredRecommandCredentials } from "@/lib/recommand-settings"
+import { getUnsortedFiles, getUnsortedFilesCount } from "@/models/files"
+import { getInvoices } from "@/models/invoices"
 import { getSettings } from "@/models/settings"
+import { getExpenses } from "@/models/transactions"
 import { TransactionFilters } from "@/models/transactions"
 import { Metadata } from "next"
+import { Suspense } from "react"
 
 export const metadata: Metadata = {
   title: "Dashboard",
@@ -18,22 +27,80 @@ export const metadata: Metadata = {
 export default async function Dashboard({ searchParams }: { searchParams: Promise<TransactionFilters> }) {
   const filters = await searchParams
   const user = await getCurrentUser()
-  const unsortedFiles = await getUnsortedFiles(user.id)
-  const settings = await getSettings(user.id)
+  const [unsortedFilesCount, settings, invoices, expenses] = await Promise.all([
+    getUnsortedFilesCount(user.id),
+    getSettings(user.id),
+    getInvoices(user.id),
+    getExpenses(user.id),
+  ])
+  const peppolSenderMissing = Object.keys(
+    getPeppolBusinessReadiness(
+      {
+        businessName: user.businessName,
+        businessBankDetails: user.businessBankDetails,
+      },
+      settings
+    )
+  ).length > 0
+  const blockedInvoices = invoices.filter((invoice) => {
+    if (["paid", "cancelled"].includes(invoice.status)) return false
+    const readiness = getInvoiceDeliveryReadiness(invoice)
+    if (!readiness.isReady) return true
+    return getInvoiceDeliveryMethod(invoice) === "peppol" && peppolSenderMissing
+  }).length
+  const overdueInvoices = invoices.filter((invoice) => invoice.status === "overdue").length
+  const expensesToPay = expenses.filter((expense) => expense.status === "to_pay" || expense.status === "overdue").length
+  const activePeppolEnvironment = getActiveRecommandEnvironment(settings)
+  const activePeppolReady = hasConfiguredRecommandCredentials(settings, activePeppolEnvironment)
+  const productionPeppolReady = hasConfiguredRecommandCredentials(settings, "production")
 
   return (
-    <div className="flex flex-col gap-5 p-5 w-full max-w-7xl self-center">
-      <div className="flex flex-col sm:flex-row gap-5 items-stretch h-full">
-        <DashboardDropZoneWidget />
+    <PageShell padding="lg" gap="lg" maxWidth="wide">
+      <HomeHeroWidget
+        userName={user.name}
+        unsortedCount={unsortedFilesCount}
+        blockedInvoices={blockedInvoices}
+        overdueInvoices={overdueInvoices}
+        expensesToPay={expensesToPay}
+        activePeppolEnvironment={activePeppolEnvironment}
+        activePeppolReady={activePeppolReady}
+        productionPeppolReady={productionPeppolReady}
+      />
 
-        <DashboardUnsortedWidget files={unsortedFiles} />
+      <WorkQueueWidget
+        unsortedCount={unsortedFilesCount}
+        expensesToPay={expensesToPay}
+        overdueInvoices={overdueInvoices}
+        blockedInvoices={blockedInvoices}
+      />
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_380px] xl:items-stretch">
+        <DashboardDropZoneWidget />
+        <Suspense fallback={<DashboardUnsortedFallback />}>
+          <DashboardUnsortedSection userId={user.id} />
+        </Suspense>
       </div>
 
       {settings.is_welcome_message_hidden !== "true" && <WelcomeWidget />}
 
       <Separator />
 
-      <StatsWidget filters={filters} />
-    </div>
+      <Suspense fallback={<DashboardStatsFallback />}>
+        <StatsWidget filters={filters} />
+      </Suspense>
+    </PageShell>
   )
+}
+
+async function DashboardUnsortedSection({ userId }: { userId: string }) {
+  const files = await getUnsortedFiles(userId)
+  return <DashboardUnsortedWidget files={files} />
+}
+
+function DashboardUnsortedFallback() {
+  return <Skeleton className="h-[260px] w-full rounded-xl" />
+}
+
+function DashboardStatsFallback() {
+  return <Skeleton className="h-[520px] w-full rounded-xl" />
 }

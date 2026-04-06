@@ -3,11 +3,17 @@
   "version": "0.5.5",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "dev": "next dev -p 7331 --turbopack",
     "build": "next build",
     "start": "prisma migrate deploy && next start",
-    "lint": "next lint"
+    "lint": "eslint 'app/(app)/files/page.tsx' 'app/(app)/files/actions.ts' 'app/(app)/expenses/page.tsx' 'app/(app)/expenses/actions.ts' 'app/(app)/invoices/actions.ts' 'app/(app)/invoices/page.tsx' 'app/(app)/invoices/new/page.tsx' 'app/(app)/invoices/[id]/page.tsx' 'app/(app)/invoices/[id]/edit/page.tsx' 'app/(app)/customers/[id]/page.tsx' 'app/(app)/settings/page.tsx' 'components/files/file-library.tsx' 'components/expenses/expense-list.tsx' 'components/expenses/expense-drawer.tsx' 'components/invoices/invoice-generator.tsx' 'components/invoices/invoice-documents-panel.tsx' 'components/invoices/send-invoice-dialog.tsx' 'components/invoices/invoice-drawer.tsx' 'components/invoices/invoice-actions.tsx' 'components/invoices/invoice-list.tsx' 'components/sidebar/sidebar.tsx' 'lib/invoice-validation.ts' 'lib/utils.ts' 'models/files.ts' 'models/invoices.ts' 'next.config.ts' 'playwright.config.ts' 'tests/e2e/solo-smoke.spec.ts' --max-warnings=0",
+    "typecheck": "tsc -p tsconfig.typecheck.json --noEmit --incremental false",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -62,6 +68,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@playwright/test": "^1.59.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

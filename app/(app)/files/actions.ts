@@ -9,11 +9,11 @@ import {
   safePathJoin,
   unsortedFilePath,
 } from "@/lib/files"
-import { createFile } from "@/models/files"
+import { createFile, updateFile } from "@/models/files"
 import { updateUser } from "@/models/users"
 import { randomUUID } from "crypto"
 import { mkdir, writeFile } from "fs/promises"
-import { revalidatePath } from "next/cache"
+import { revalidatePath, revalidateTag } from "next/cache"
 import path from "path"
 
 export async function uploadFilesAction(formData: FormData): Promise<ActionState<null>> {
@@ -75,6 +75,21 @@ export async function uploadFilesAction(formData: FormData): Promise<ActionState
 
   console.log("uploadedFiles", uploadedFiles)
 
+  revalidateTag(`unsorted:${user.id}`)
+  revalidateTag(`user:${user.id}`)
+  revalidatePath("/unsorted")
+  revalidatePath("/files")
+
+  return { success: true, error: null }
+}
+
+export async function setFileReviewedAction(fileId: string, isReviewed: boolean): Promise<ActionState<null>> {
+  const user = await getCurrentUser()
+
+  await updateFile(fileId, user.id, { isReviewed })
+
+  revalidateTag(`unsorted:${user.id}`)
+  revalidatePath("/files")
   revalidatePath("/unsorted")
 
   return { success: true, error: null }

@@ -1,9 +1,10 @@
 import { Skeleton } from "@/components/ui/skeleton"
+import { PageShell } from "@/components/ui/page-shell"
 import { Loader2 } from "lucide-react"
 
 export default function Loading() {
   return (
-    <>
+    <PageShell maxWidth="page">
       <header className="flex items-center justify-between">
         <h2 className="text-3xl font-bold tracking-tight flex flex-row gap-2">
           <span>Loading unsorted files...</span>
@@ -27,6 +28,6 @@ export default function Loading() {
           </div>
         </div>
       </Skeleton>
-    </>
+    </PageShell>
   )
 }

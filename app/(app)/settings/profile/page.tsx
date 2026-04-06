@@ -6,7 +6,7 @@ export default async function ProfileSettingsPage() {
 
   return (
     <>
-      <div className="w-full max-w-2xl">
+      <div className="w-full max-w-2xl space-y-space-6">
         <ProfileSettingsForm user={user} />
       </div>
     </>

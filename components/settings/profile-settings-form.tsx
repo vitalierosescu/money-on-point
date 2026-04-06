@@ -29,7 +29,7 @@ export default function ProfileSettingsForm({ user }: { user: User }) {
             {pending ? "Saving..." : "Save"}
           </Button>
           {saveState?.success && (
-            <p className="text-green-500 flex flex-row items-center gap-2">
+            <p className="text-success flex flex-row items-center gap-2">
               <CircleCheckBig />
               Saved!
             </p>

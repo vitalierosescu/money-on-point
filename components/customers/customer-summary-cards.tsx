@@ -6,16 +6,16 @@ export function CustomerSummaryCards({ stats }: { stats: Stats }) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
       <div className="border rounded-lg p-4">
-        <p className="text-sm text-muted-foreground">Most Active</p>
-        <p className="font-semibold truncate">{stats.mostActive?.name || "—"}</p>
+        <p className="text-sm text-muted-foreground">Open invoices</p>
+        <p className="font-semibold">{stats.openInvoicesCount}</p>
       </div>
       <div className="border rounded-lg p-4">
-        <p className="text-sm text-muted-foreground">Inactive (30d)</p>
-        <p className="font-semibold">{stats.inactiveCount}</p>
+        <p className="text-sm text-muted-foreground">Overdue invoices</p>
+        <p className="font-semibold">{stats.overdueInvoicesCount}</p>
       </div>
       <div className="border rounded-lg p-4">
-        <p className="text-sm text-muted-foreground">Top Revenue</p>
-        <p className="font-semibold truncate">{stats.topRevenue?.name || "—"}</p>
+        <p className="text-sm text-muted-foreground">No invoices</p>
+        <p className="font-semibold">{stats.noInvoiceCustomersCount}</p>
       </div>
       <div className="border rounded-lg p-4">
         <p className="text-sm text-muted-foreground">New (30d)</p>

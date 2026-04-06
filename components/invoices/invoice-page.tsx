@@ -1,6 +1,7 @@
 import { FormSelectCurrency } from "@/components/forms/select-currency"
 import { FormAvatar, FormInput, FormTextarea } from "@/components/forms/simple"
 import { Button } from "@/components/ui/button"
+import { NativeSelect } from "@/components/ui/native-select"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { getBelgianAuthorRightsRule, isAuthorRightsMode, type AuthorRightsSplitPreset } from "@/lib/author-rights"
 import { buildAuthorRightsData, getInvoiceTaxAmount, getInvoiceTotalAmount } from "@/lib/invoice-totals"
@@ -57,7 +58,7 @@ const ItemRow = memo(function ItemRow({
   currency: string
 }) {
   return (
-    <div className="flex flex-col items-start gap-2 bg-white px-3 py-3 sm:grid sm:grid-cols-[1fr_80px_110px_100px_36px] sm:items-center sm:gap-2">
+    <div className="flex flex-col items-start gap-2 bg-card px-3 py-3 sm:grid sm:grid-cols-[1fr_80px_110px_100px_36px] sm:items-center sm:gap-2">
       <div className="w-full">
         <FormInput
           type="text"
@@ -70,7 +71,7 @@ const ItemRow = memo(function ItemRow({
         {!item.showSubtitle ? (
           <button
             type="button"
-            className="mt-1 ml-1 text-xs text-muted-foreground hover:text-foreground"
+            className="mt-1 ml-1 text-caption text-muted-foreground hover:text-foreground"
             onClick={() => onChange(index, "showSubtitle", true)}
           >
             + Beschrijving toevoegen
@@ -80,7 +81,7 @@ const ItemRow = memo(function ItemRow({
             type="text"
             value={item.subtitle}
             onChange={(e) => onChange(index, "subtitle", e.target.value)}
-            className="mt-1 w-full text-xs text-muted-foreground"
+            className="mt-1 w-full text-caption text-muted-foreground"
             placeholder="Beschrijving (optioneel)"
           />
         )}
@@ -282,7 +283,7 @@ export function InvoicePage({
         </div>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <div>
-            <label className="mb-1 block text-xs text-muted-foreground">Titel</label>
+            <label className="mb-1 block text-caption text-muted-foreground">Titel</label>
             <FormInput
               value={invoiceData.title}
               onChange={(e) => dispatch({ type: "UPDATE_FIELD", field: "title", value: e.target.value })}
@@ -290,14 +291,14 @@ export function InvoicePage({
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-muted-foreground">Factuurnummer</label>
+            <label className="mb-1 block text-caption text-muted-foreground">Factuurnummer</label>
             <FormInput
               value={invoiceData.invoiceNumber}
               onChange={(e) => dispatch({ type: "UPDATE_FIELD", field: "invoiceNumber", value: e.target.value })}
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-muted-foreground">Factuurdatum</label>
+            <label className="mb-1 block text-caption text-muted-foreground">Factuurdatum</label>
             <FormInput
               type="date"
               value={invoiceData.date}
@@ -306,7 +307,7 @@ export function InvoicePage({
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-muted-foreground">Vervaldatum</label>
+            <label className="mb-1 block text-caption text-muted-foreground">Vervaldatum</label>
             <FormInput
               type="date"
               value={invoiceData.dueDate}
@@ -315,7 +316,7 @@ export function InvoicePage({
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-muted-foreground">Valuta</label>
+            <label className="mb-1 block text-caption text-muted-foreground">Valuta</label>
             <FormSelectCurrency
               currencies={currencies}
               value={invoiceData.currency}
@@ -323,7 +324,7 @@ export function InvoicePage({
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-muted-foreground">Logo</label>
+            <label className="mb-1 block text-caption text-muted-foreground">Logo</label>
             <FormAvatar
               name="businessLogo"
               className="h-[60px] w-[60px]"
@@ -349,19 +350,19 @@ export function InvoicePage({
         </div>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <div>
-            <label className="mb-1 block text-xs text-muted-foreground">Type factuur</label>
-            <select
+            <label className="mb-1 block text-caption text-muted-foreground">Type factuur</label>
+            <NativeSelect
               value={invoiceData.invoiceMode}
               onChange={(e) => setInvoiceMode(e.target.value as "standard" | "author_rights")}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              className="h-10"
             >
               <option value="standard">Standaard</option>
               <option value="author_rights">Auteursrechten (België)</option>
-            </select>
+            </NativeSelect>
           </div>
           {isAuthorRightsInvoice && (
             <div>
-              <label className="mb-1 block text-xs text-muted-foreground">Inkomstenjaar regels</label>
+              <label className="mb-1 block text-caption text-muted-foreground">Inkomstenjaar regels</label>
               <FormInput
                 type="number"
                 min="2024"
@@ -380,7 +381,7 @@ export function InvoicePage({
         </div>
 
         {isAuthorRightsInvoice && (
-          <div className="mt-4 space-y-4 rounded-lg border bg-amber-50/50 p-4">
+          <div className="mt-4 space-y-4 rounded-lg border bg-warning/10 p-4">
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
@@ -399,12 +400,12 @@ export function InvoicePage({
             </div>
 
             {!authorRightsRule ? (
-              <div className="rounded-md border border-amber-300 bg-amber-100 px-3 py-2 text-sm text-amber-950">
+              <div className="rounded-md border border-warning/30 bg-warning/15 px-3 py-2 text-sm text-warning">
                 Geen Belgische auteursrechtenregels geconfigureerd voor {invoiceData.authorRightsRuleYear}. Opslaan als draft kan,
                 maar verzenden hoort pas nadat de regels zijn bijgewerkt.
               </div>
             ) : (
-              <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+              <div className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
                 Geconfigureerde drempel {authorRightsRule.incomeYear}:{" "}
                 {formatCurrency(authorRightsRule.maxAuthorRightsCompensationCents, invoiceData.currency)} bruto auteursrechten.
               </div>
@@ -412,7 +413,7 @@ export function InvoicePage({
 
             <div className="grid gap-3 md:grid-cols-2">
               <div>
-                <label className="mb-1 block text-xs text-muted-foreground">Contractreferentie</label>
+                <label className="mb-1 block text-caption text-muted-foreground">Contractreferentie</label>
                 <FormInput
                   value={invoiceData.authorRightsContractReference}
                   onChange={(e) =>
@@ -422,7 +423,7 @@ export function InvoicePage({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-muted-foreground">Datum overeenkomst</label>
+                <label className="mb-1 block text-caption text-muted-foreground">Datum overeenkomst</label>
                 <FormInput
                   type="date"
                   value={invoiceData.authorRightsAgreementDate}
@@ -435,7 +436,7 @@ export function InvoicePage({
 
             <div className="grid gap-3 md:grid-cols-2">
               <div>
-                <label className="mb-1 block text-xs text-muted-foreground">Beroepsvergoeding %</label>
+                <label className="mb-1 block text-caption text-muted-foreground">Beroepsvergoeding %</label>
                 <FormInput
                   type="number"
                   min="0"
@@ -445,7 +446,7 @@ export function InvoicePage({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-muted-foreground">Auteursrechten %</label>
+                <label className="mb-1 block text-caption text-muted-foreground">Auteursrechten %</label>
                 <FormInput
                   type="number"
                   min="0"
@@ -458,7 +459,7 @@ export function InvoicePage({
 
             <div className="grid gap-3 md:grid-cols-3">
               <div>
-                <label className="mb-1 block text-xs text-muted-foreground">Btw beroepsvergoeding %</label>
+                <label className="mb-1 block text-caption text-muted-foreground">Btw beroepsvergoeding %</label>
                 <FormInput
                   type="number"
                   min="0"
@@ -470,7 +471,7 @@ export function InvoicePage({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-muted-foreground">Btw auteursrechten %</label>
+                <label className="mb-1 block text-caption text-muted-foreground">Btw auteursrechten %</label>
                 <FormInput
                   type="number"
                   min="0"
@@ -486,7 +487,7 @@ export function InvoicePage({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs text-muted-foreground">Roerende voorheffing %</label>
+                <label className="mb-1 block text-caption text-muted-foreground">Roerende voorheffing %</label>
                 <FormInput
                   type="number"
                   min="0"
@@ -504,7 +505,7 @@ export function InvoicePage({
             </div>
 
             <div>
-              <label className="mb-1 block text-xs text-muted-foreground">Bijzondere voorwaarden</label>
+              <label className="mb-1 block text-caption text-muted-foreground">Bijzondere voorwaarden</label>
               <FormTextarea
                 value={invoiceData.authorRightsSpecialConditions}
                 onChange={(e) =>
@@ -515,7 +516,7 @@ export function InvoicePage({
               />
             </div>
 
-            <label className="flex items-start gap-2 text-sm text-muted-foreground">
+            <label className="flex items-start gap-2 text-body text-muted-foreground">
               <input
                 type="checkbox"
                 checked={invoiceData.authorRightsEligibilityAcknowledged}
@@ -526,7 +527,7 @@ export function InvoicePage({
                     value: e.target.checked,
                   })
                 }
-                className="mt-1 h-4 w-4 rounded border-gray-300"
+                className="mt-1 h-4 w-4 rounded border-input"
               />
               <span>
                 Ik bevestig dat deze opdracht in aanmerking komt voor Belgische auteursrechten, dat de toekenning schriftelijk
@@ -535,7 +536,7 @@ export function InvoicePage({
             </label>
 
             {authorRightsData && (
-              <div className="grid gap-2 rounded-md border bg-white p-3 text-sm md:grid-cols-2">
+              <div className="grid gap-2 rounded-md border bg-card p-3 text-sm md:grid-cols-2">
                 <div className="flex justify-between gap-4">
                   <span className="text-muted-foreground">Beroepsvergoeding</span>
                   <span>{formatCurrency(authorRightsData.professionalGrossCents, invoiceData.currency)}</span>
@@ -574,7 +575,7 @@ export function InvoicePage({
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <div>
             <div className="mb-1 flex items-center justify-between">
-              <label className="text-xs text-muted-foreground">{invoiceData.companyDetailsLabel || "Van"}</label>
+              <label className="text-caption text-muted-foreground">{invoiceData.companyDetailsLabel || "Van"}</label>
               <Button
                 type="button"
                 variant="ghost"
@@ -600,7 +601,7 @@ export function InvoicePage({
           </div>
           <div>
             <div className="mb-1 flex items-center justify-between">
-              <label className="text-xs text-muted-foreground">{invoiceData.billToLabel || "Aan"}</label>
+              <label className="text-caption text-muted-foreground">{invoiceData.billToLabel || "Aan"}</label>
               <Button
                 type="button"
                 variant="ghost"
@@ -631,7 +632,7 @@ export function InvoicePage({
           <InlineHint text="Voeg hier je artikels of diensten toe. Totaal wordt live herberekend." />
         </div>
         <div className="mt-3 overflow-hidden rounded-lg border">
-          <div className="hidden border-b bg-muted/30 text-xs font-medium uppercase tracking-wider text-muted-foreground sm:grid sm:grid-cols-[1fr_80px_110px_100px_36px] sm:px-3 sm:py-2">
+          <div className="hidden border-b bg-muted/30 text-caption font-medium uppercase tracking-wider text-muted-foreground sm:grid sm:grid-cols-[1fr_80px_110px_100px_36px] sm:px-3 sm:py-2">
             <div>{invoiceData.itemLabel || "Omschrijving"}</div>
             <div className="text-right">{invoiceData.quantityLabel || "Aantal"}</div>
             <div className="text-right">{invoiceData.unitPriceLabel || "Prijs"}</div>
@@ -664,7 +665,7 @@ export function InvoicePage({
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
           <div className="space-y-3">
             <div>
-              <div className="mb-2 text-xs text-muted-foreground">Btw en toeslagen</div>
+              <div className="mb-2 text-caption text-muted-foreground">Btw en toeslagen</div>
               {isAuthorRightsInvoice ? (
                 <div className="rounded-md border border-dashed px-3 py-3 text-sm text-muted-foreground">
                   Btw wordt in auteursrechtenmodus automatisch berekend op basis van de twee vergoedingsdelen hierboven.
@@ -689,7 +690,7 @@ export function InvoicePage({
             </div>
 
             <div>
-              <div className="mb-2 text-xs text-muted-foreground">Extra kosten / kortingen</div>
+              <div className="mb-2 text-caption text-muted-foreground">Extra kosten / kortingen</div>
               <div className="space-y-2">
                 {invoiceData.additionalFees.map((fee, index) => (
                   <FeeRow
@@ -751,12 +752,12 @@ export function InvoicePage({
               ))}
 
               {!isAuthorRightsInvoice && (
-                <label className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                <label className="mt-3 flex items-center gap-2 text-caption text-muted-foreground">
                   <input
                     type="checkbox"
                     checked={invoiceData.taxIncluded}
                     onChange={(e) => dispatch({ type: "UPDATE_FIELD", field: "taxIncluded", value: e.target.checked })}
-                    className="h-4 w-4 rounded border-gray-300"
+                    className="h-4 w-4 rounded border-input"
                   />
                   Btw inbegrepen in lijnprijs
                 </label>
@@ -767,7 +768,7 @@ export function InvoicePage({
                 <span>{formatCurrency(total * 100, invoiceData.currency)}</span>
               </div>
               {isAuthorRightsInvoice && (
-                <div className="flex justify-between text-xs text-muted-foreground">
+                <div className="flex justify-between text-caption text-muted-foreground">
                   <span>Bruto btw</span>
                   <span>{formatCurrency(Math.round(calculatedTaxTotal * 100), invoiceData.currency)}</span>
                 </div>
@@ -780,7 +781,7 @@ export function InvoicePage({
       <section className="rounded-xl border bg-card p-4">
         <div className="grid gap-3 md:grid-cols-2">
           <div>
-            <label className="mb-1 block text-xs text-muted-foreground">Notities / voorwaarden</label>
+            <label className="mb-1 block text-caption text-muted-foreground">Notities / voorwaarden</label>
             <FormTextarea
               value={invoiceData.notes}
               onChange={(e) => dispatch({ type: "UPDATE_FIELD", field: "notes", value: e.target.value })}
@@ -789,7 +790,7 @@ export function InvoicePage({
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-muted-foreground">Betaalgegevens</label>
+            <label className="mb-1 block text-caption text-muted-foreground">Betaalgegevens</label>
             <FormTextarea
               value={invoiceData.bankDetails}
               onChange={(e) => dispatch({ type: "UPDATE_FIELD", field: "bankDetails", value: e.target.value })}

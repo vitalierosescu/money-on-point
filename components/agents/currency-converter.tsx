@@ -1,22 +1,45 @@
+import { t } from "@/lib/i18n"
+import type { UiLocale } from "@/lib/locale"
 import { FormError } from "@/components/forms/error"
 import { formatCurrency } from "@/lib/utils"
 import { format, startOfDay } from "date-fns"
 import { Loader2 } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "../ui/button"
 
-async function getCurrencyRate(currencyCodeFrom: string, currencyCodeTo: string, date: Date): Promise<number> {
-  const formattedDate = format(date, "yyyy-MM-dd")
-  const response = await fetch(`/api/currency?from=${currencyCodeFrom}&to=${currencyCodeTo}&date=${formattedDate}`)
+const rateCache = new Map<string, number>()
+const ratePromiseCache = new Map<string, Promise<number>>()
 
-  if (!response.ok) {
-    const errorData = await response.json()
-    console.log("Currency API error:", errorData.error)
-    throw new Error(errorData.error || "Failed to fetch currency rate")
+async function getCurrencyRate(currencyCodeFrom: string, currencyCodeTo: string, formattedDate: string): Promise<number> {
+  const cacheKey = `${currencyCodeFrom}:${currencyCodeTo}:${formattedDate}`
+  const cached = rateCache.get(cacheKey)
+  if (cached !== undefined) {
+    return cached
   }
 
-  const data = await response.json()
-  return data.rate
+  const inFlight = ratePromiseCache.get(cacheKey)
+  if (inFlight) {
+    return inFlight
+  }
+
+  const request = fetch(`/api/currency?from=${currencyCodeFrom}&to=${currencyCodeTo}&date=${formattedDate}`)
+    .then(async (response) => {
+      if (!response.ok) {
+        const errorData = await response.json()
+        console.log("Currency API error:", errorData.error)
+        throw new Error(errorData.error || "Failed to fetch currency rate")
+      }
+
+      const data = await response.json()
+      rateCache.set(cacheKey, data.rate)
+      return data.rate as number
+    })
+    .finally(() => {
+      ratePromiseCache.delete(cacheKey)
+    })
+
+  ratePromiseCache.set(cacheKey, request)
+  return request
 }
 
 export const CurrencyConverterTool = ({
@@ -25,49 +48,77 @@ export const CurrencyConverterTool = ({
   targetCurrencyCode,
   date,
   onChange,
+  locale = "en",
 }: {
   originalTotal: number
   originalCurrencyCode: string
   targetCurrencyCode: string
   date?: Date | undefined
   onChange?: (value: number) => void
+  locale?: UiLocale
 }) => {
-  const normalizedDate = startOfDay(date || new Date(Date.now() - 24 * 60 * 60 * 1000))
-  const normalizedDateString = format(normalizedDate, "yyyy-MM-dd")
-  const [exchangeRate, setExchangeRate] = useState(0)
+  const normalizedDate = useMemo(
+    () => startOfDay(date || new Date(Date.now() - 24 * 60 * 60 * 1000)),
+    [date]
+  )
+  const normalizedDateString = useMemo(() => format(normalizedDate, "yyyy-MM-dd"), [normalizedDate])
   const [convertedTotal, setConvertedTotal] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [retryNonce, setRetryNonce] = useState(0)
+  const onChangeRef = useRef(onChange)
+  const cacheKey = `${originalCurrencyCode}:${targetCurrencyCode}:${normalizedDateString}`
 
-  const fetchAndUpdateRates = async () => {
-    try {
-      setIsLoading(true)
-      setError(null)
+  useEffect(() => {
+    onChangeRef.current = onChange
+  }, [onChange])
 
-      const rate = await getCurrencyRate(originalCurrencyCode, targetCurrencyCode, normalizedDate)
-      setExchangeRate(rate)
-      setConvertedTotal(Math.round(originalTotal * rate * 100) / 100)
-    } catch (error) {
-      console.error("Error fetching currency rates:", error)
-      setExchangeRate(0)
-      setConvertedTotal(0)
-      setError(error instanceof Error ? error.message : "Failed to fetch currency rate")
-    } finally {
-      setIsLoading(false)
+  useEffect(() => {
+    let cancelled = false
+
+    async function fetchAndUpdateRates() {
+      try {
+        setError(null)
+        if (rateCache.has(cacheKey)) {
+          const cachedRate = rateCache.get(cacheKey) ?? 0
+          setConvertedTotal(Math.round(originalTotal * cachedRate * 100) / 100)
+          setIsLoading(false)
+          return
+        }
+
+        setIsLoading(true)
+
+        const rate = await getCurrencyRate(originalCurrencyCode, targetCurrencyCode, normalizedDateString)
+        if (cancelled) return
+
+        setConvertedTotal(Math.round(originalTotal * rate * 100) / 100)
+      } catch (error) {
+        if (cancelled) return
+
+        console.error("Error fetching currency rates:", error)
+        setConvertedTotal(0)
+        setError(error instanceof Error ? error.message : "Failed to fetch currency rate")
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false)
+        }
+      }
     }
-  }
+
+    fetchAndUpdateRates()
+
+    return () => {
+      cancelled = true
+    }
+  }, [cacheKey, normalizedDateString, originalCurrencyCode, originalTotal, retryNonce, targetCurrencyCode])
 
   const handleRestart = () => {
     setError(null)
-    fetchAndUpdateRates()
+    setRetryNonce((prev) => prev + 1)
   }
 
   useEffect(() => {
-    fetchAndUpdateRates()
-  }, [originalCurrencyCode, targetCurrencyCode, normalizedDateString, originalTotal])
-
-  useEffect(() => {
-    onChange?.(convertedTotal)
+    onChangeRef.current?.(convertedTotal)
   }, [convertedTotal])
 
   if (!originalTotal || !originalCurrencyCode || !targetCurrencyCode || originalCurrencyCode === targetCurrencyCode) {
@@ -79,14 +130,14 @@ export const CurrencyConverterTool = ({
       {isLoading ? (
         <div className="flex flex-row items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="w-4 h-4 animate-spin" />
-          <div className="font-semibold">Loading exchange rates...</div>
+          <div className="font-semibold">{t(locale, "analyze.exchangeRateLoading")}</div>
         </div>
       ) : (
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <div>{formatCurrency(originalTotal * 100, originalCurrencyCode)}</div>
+            <div>{formatCurrency(originalTotal * 100, originalCurrencyCode, locale)}</div>
             <div>=</div>
-            <div>{formatCurrency(originalTotal * 100 * exchangeRate, targetCurrencyCode).slice(0, 1)}</div>
+            <div>{targetCurrencyCode}</div>
             <input
               type="number"
               step="0.01"
@@ -94,19 +145,23 @@ export const CurrencyConverterTool = ({
               value={convertedTotal}
               onChange={(e) => {
                 const newValue = parseFloat(e.target.value || "0")
-                !isNaN(newValue) && setConvertedTotal(Math.round(newValue * 100) / 100)
+                if (!isNaN(newValue)) {
+                  setConvertedTotal(Math.round(newValue * 100) / 100)
+                }
               }}
               className="w-32 rounded-md border border-input px-2 py-1"
             />
           </div>
           {!error && (
-            <div className="text-xs text-muted-foreground">The exchange rate will be added to the transaction</div>
+            <div className="text-xs text-muted-foreground">
+              {t(locale, "analyze.exchangeRateHint")}
+            </div>
           )}
           {error && (
             <div className="flex flex-row gap-2">
               <FormError className="mt-0 text-sm">{error}</FormError>
               <Button variant="outline" size="sm" className="text-xs" onClick={handleRestart}>
-                Retry
+                {t(locale, "common.retry")}
               </Button>
             </div>
           )}

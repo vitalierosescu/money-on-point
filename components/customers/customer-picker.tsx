@@ -1,11 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Customer } from "@/prisma/client"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { createCustomerAction } from "@/app/(app)/customers/actions"
+import { CustomerEditPanel } from "@/components/customers/customer-edit-panel"
 
 type CustomerPickerProps = {
   customers: Customer[]
@@ -17,6 +18,7 @@ export function CustomerPicker({ customers, selectedCustomer, onSelect }: Custom
   const [activeTab, setActiveTab] = useState<"existing" | "new">("existing")
   const [search, setSearch] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [localCustomers, setLocalCustomers] = useState(customers)
 
   const [newCustomer, setNewCustomer] = useState({
     name: "",
@@ -29,7 +31,11 @@ export function CustomerPicker({ customers, selectedCustomer, onSelect }: Custom
     email: "",
   })
 
-  const filtered = customers.filter(
+  useEffect(() => {
+    setLocalCustomers(customers)
+  }, [customers])
+
+  const filtered = localCustomers.filter(
     (c) =>
       c.name.toLowerCase().includes(search.toLowerCase()) ||
       (c.email?.toLowerCase().includes(search.toLowerCase()))
@@ -50,6 +56,9 @@ export function CustomerPicker({ customers, selectedCustomer, onSelect }: Custom
         email: newCustomer.email || null,
       })
       if (result.success && result.data) {
+        setLocalCustomers((prev) =>
+          [...prev, result.data].sort((a, b) => a.name.localeCompare(b.name))
+        )
         onSelect(result.data)
       }
     } finally {
@@ -66,9 +75,25 @@ export function CustomerPicker({ customers, selectedCustomer, onSelect }: Custom
             <p className="text-sm text-muted-foreground">{selectedCustomer.email}</p>
           )}
         </div>
-        <Button variant="outline" size="sm" onClick={() => onSelect(null)}>
-          Change
-        </Button>
+        <div className="flex items-center gap-2">
+          <CustomerEditPanel
+            customer={selectedCustomer}
+            onSuccess={(updated) => {
+              setLocalCustomers((prev) =>
+                prev.map((customer) => (customer.id === updated.id ? updated : customer))
+              )
+              onSelect(updated)
+            }}
+            trigger={
+              <Button variant="outline" size="sm">
+                Edit
+              </Button>
+            }
+          />
+          <Button variant="outline" size="sm" onClick={() => onSelect(null)}>
+            Change
+          </Button>
+        </div>
       </div>
     )
   }

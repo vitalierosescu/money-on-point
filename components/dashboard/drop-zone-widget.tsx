@@ -42,7 +42,7 @@ export default function DashboardDropZoneWidget() {
 
   return (
     <div className="flex w-full h-full">
-      <label className="relative w-full h-full border-2 border-dashed rounded-lg transition-colors hover:border-primary cursor-pointer">
+      <label className="relative w-full h-full cursor-pointer rounded-2xl border-2 border-dashed border-border bg-card transition-colors hover:border-primary">
         <input
           type="file"
           id="fileInput"
@@ -51,7 +51,7 @@ export default function DashboardDropZoneWidget() {
           accept={config.upload.acceptedMimeTypes}
           onChange={handleFileChange}
         />
-        <div className="flex flex-col items-center justify-center gap-4 p-8 text-center h-full">
+        <div className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
           {isUploading ? (
             <Loader2 className="h-8 w-8 text-muted-foreground animate-spin" />
           ) : (
@@ -59,11 +59,11 @@ export default function DashboardDropZoneWidget() {
           )}
           <div>
             <p className="text-lg font-medium">
-              {isUploading ? "Uploading..." : "Take a photo or drop your files here"}
+              {isUploading ? "Uploading..." : "Drop receipts, invoices, or PDFs here"}
             </p>
             {!uploadError && (
-              <p className="text-sm text-muted-foreground">
-                upload receipts, invoices and any other documents for me to scan
+              <p className="mt-1 text-sm text-muted-foreground">
+                You&apos;ll land in Unsorted after upload so you can review and classify everything right away.
               </p>
             )}
             {uploadError && <FormError>{uploadError}</FormError>}

@@ -41,7 +41,7 @@ import { getSettings } from "@/models/settings"
 import { createTransaction, updateTransaction } from "@/models/transactions"
 import { InvoiceEmail } from "@/components/emails/invoice-email"
 import { Prisma, User } from "@/prisma/client"
-import { revalidatePath } from "next/cache"
+import { revalidatePath, revalidateTag } from "next/cache"
 import { randomUUID } from "crypto"
 import { mkdir, writeFile } from "fs/promises"
 import path from "path"
@@ -747,6 +747,8 @@ export async function uploadAndAttachFileToInvoiceAction(
     data: { storageUsed },
   })
 
+  revalidateTag(`unsorted:${user.id}`)
+  revalidateTag(`user:${user.id}`)
   revalidatePath("/invoices")
   revalidatePath(`/invoices/${invoiceId}`)
   revalidatePath("/files")

@@ -1,7 +1,7 @@
 import config from "@/lib/config"
 import { PLANS, stripeClient } from "@/lib/stripe"
-import { createUserDefaults, isDatabaseEmpty } from "@/models/defaults"
 import { getOrCreateCloudUser, getUserByStripeCustomerId, updateUser } from "@/models/users"
+import { revalidateTag } from "next/cache"
 import { NextResponse } from "next/server"
 import Stripe from "stripe"
 
@@ -107,5 +107,6 @@ async function handleUserSubscriptionUpdate(
     updatedAt: new Date(),
   })
 
+  revalidateTag(`user:${user.id}`)
   console.log(`Updated user ${user.id} with plan ${plan.code} and expires at ${newMembershipExpiresAt}`)
 }

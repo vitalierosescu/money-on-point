@@ -3,27 +3,27 @@
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   draft: {
     label: "Draft",
-    className: "bg-gray-100 text-gray-700",
+    className: "bg-muted text-muted-foreground",
   },
   sent: {
     label: "Sent",
-    className: "bg-blue-100 text-blue-700",
+    className: "bg-info/15 text-info",
   },
   paid: {
     label: "Paid",
-    className: "bg-green-100 text-green-700",
+    className: "bg-success/15 text-success",
   },
   partially_paid: {
     label: "Partial",
-    className: "bg-yellow-100 text-yellow-700",
+    className: "bg-warning/15 text-warning",
   },
   overdue: {
     label: "Overdue",
-    className: "bg-red-100 text-red-700",
+    className: "bg-destructive/10 text-destructive",
   },
   cancelled: {
     label: "Cancelled",
-    className: "bg-gray-100 text-gray-400 line-through",
+    className: "bg-muted text-muted-foreground line-through",
   },
 }
 

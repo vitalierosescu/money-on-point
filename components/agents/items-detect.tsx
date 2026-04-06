@@ -1,14 +1,23 @@
 import { formatCurrency } from "@/lib/utils"
-import { Save, Split } from "lucide-react"
+import type { UiLocale } from "@/lib/locale"
+import { t } from "@/lib/i18n"
+import { Loader2, Split } from "lucide-react"
 import { Button } from "../ui/button"
 import { TransactionData } from "@/models/transactions"
 import { splitFileIntoItemsAction } from "@/app/(app)/unsorted/actions"
 import { useNotification } from "@/app/(app)/context"
 import { useState } from "react"
-import { Loader2 } from "lucide-react"
 import { File } from "@/prisma/client"
 
-export const ItemsDetectTool = ({ file, data }: { file?: File; data: TransactionData }) => {
+export const ItemsDetectTool = ({
+  file,
+  data,
+  locale = "en",
+}: {
+  file?: File
+  data: TransactionData
+  locale?: UiLocale
+}) => {
   const { showNotification } = useNotification()
   const [isSplitting, setIsSplitting] = useState(false)
 
@@ -26,15 +35,27 @@ export const ItemsDetectTool = ({ file, data }: { file?: File; data: Transaction
 
       const result = await splitFileIntoItemsAction(null, formData)
       if (result.success) {
-        showNotification({ code: "global.banner", message: "Split successful!", type: "success" })
+        showNotification({
+          code: "global.banner",
+          message: t(locale, "analyze.splitSuccess"),
+          type: "success",
+        })
         showNotification({ code: "sidebar.unsorted", message: "new" })
         setTimeout(() => showNotification({ code: "sidebar.unsorted", message: "" }), 3000)
       } else {
-        showNotification({ code: "global.banner", message: result.error || "Failed to split", type: "failed" })
+        showNotification({
+          code: "global.banner",
+          message: result.error || t(locale, "analyze.splitFailed"),
+          type: "failed",
+        })
       }
     } catch (error) {
       console.error("Failed to split items:", error)
-      showNotification({ code: "global.banner", message: "Failed to split items", type: "failed" })
+      showNotification({
+        code: "global.banner",
+        message: t(locale, "analyze.splitItemsFailed"),
+        type: "failed",
+      })
     } finally {
       setIsSplitting(false)
     }
@@ -53,7 +74,7 @@ export const ItemsDetectTool = ({ file, data }: { file?: File; data: Transaction
               <div className="text-xs text-muted-foreground">{item.description}</div>
             </div>
             <div className="font-medium">
-              {formatCurrency((item.total || 0) * 100, item.currencyCode || data.currencyCode || "USD")}
+              {formatCurrency((item.total || 0) * 100, item.currencyCode || data.currencyCode || "USD", locale)}
             </div>
           </div>
         ))}
@@ -64,12 +85,12 @@ export const ItemsDetectTool = ({ file, data }: { file?: File; data: Transaction
           {isSplitting ? (
             <>
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Splitting...
+              {t(locale, "analyze.splitting")}
             </>
           ) : (
             <>
               <Split className="w-4 h-4 mr-2" />
-              Split into {data.items.length} individual transactions
+              {t(locale, "analyze.splitIntoTransactions", { count: data.items.length })}
             </>
           )}
         </Button>

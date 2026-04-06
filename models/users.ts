@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db"
 import { Prisma } from "@/prisma/client"
+import { unstable_cache } from "next/cache"
 import { cache } from "react"
 import { isDatabaseEmpty } from "./defaults"
 import { createUserDefaults } from "./defaults"
@@ -42,10 +43,21 @@ export async function getOrCreateCloudUser(email: string, data: Prisma.UserCreat
   return user
 }
 
+const getUserByIdCached = (id: string) =>
+  unstable_cache(
+    async () =>
+      prisma.user.findUnique({
+        where: { id },
+      }),
+    ["user-by-id", id],
+    {
+      revalidate: 30,
+      tags: [`user:${id}`],
+    }
+  )()
+
 export const getUserById = cache(async (id: string) => {
-  return await prisma.user.findUnique({
-    where: { id },
-  })
+  return await getUserByIdCached(id)
 })
 
 export const getUserByEmail = cache(async (email: string) => {

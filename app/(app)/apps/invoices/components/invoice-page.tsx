@@ -74,10 +74,10 @@ const ItemRow = memo(function ItemRow({
   currency: string
 }) {
   return (
-    <div className="flex flex-col sm:flex-row items-start py-3 px-4 bg-white hover:bg-gray-50">
+    <div className="flex flex-col sm:flex-row items-start py-3 px-4 bg-card hover:bg-muted/30">
       {/* Mobile view label (visible only on small screens) */}
       <div className="flex justify-between sm:hidden mb-2">
-        <span className="text-xs font-medium text-gray-500 uppercase">Item</span>
+        <span className="text-caption font-medium text-muted-foreground uppercase">Item</span>
         <Button variant="destructive" className="rounded-full p-1 h-5 w-5" onClick={() => onRemove(index)}>
           <X />
         </Button>
@@ -98,7 +98,7 @@ const ItemRow = memo(function ItemRow({
             {!item.showSubtitle ? (
               <button
                 type="button"
-                className="text-xs text-gray-400 hover:text-gray-800 mt-1 ml-1"
+                className="text-caption text-muted-foreground hover:text-foreground mt-1 ml-1"
                 onClick={() => onChange(index, "showSubtitle", true)}
               >
                 + Add Description
@@ -108,7 +108,7 @@ const ItemRow = memo(function ItemRow({
                 type="text"
                 value={item.subtitle}
                 onChange={(e) => onChange(index, "subtitle", e.target.value)}
-                className="w-full mt-1 text-xs text-muted-foreground"
+                className="w-full mt-1 text-caption text-muted-foreground"
                 placeholder="Detailed description (optional)"
               />
             )}
@@ -118,9 +118,9 @@ const ItemRow = memo(function ItemRow({
 
       {/* Mobile labels for small screens */}
       <div className="grid grid-cols-3 gap-2 mt-2 sm:hidden">
-        <div className="text-xs font-medium text-gray-500 uppercase">Quantity</div>
-        <div className="text-xs font-medium text-gray-500 uppercase">Unit Price</div>
-        <div className="text-xs font-medium text-gray-500 uppercase">Subtotal</div>
+        <div className="text-caption font-medium text-muted-foreground uppercase">Quantity</div>
+        <div className="text-caption font-medium text-muted-foreground uppercase">Unit Price</div>
+        <div className="text-caption font-medium text-muted-foreground uppercase">Subtotal</div>
       </div>
 
       {/* Quantity, Unit Price, Subtotal, and Remove button */}
@@ -191,7 +191,7 @@ const TaxRow = memo(function TaxRow({
           onChange={(e) => onChange(index, "rate", Number(e.target.value))}
           className="w-12 text-right"
         />
-        <span className="text-sm text-gray-600">%</span>
+        <span className="text-sm text-muted-foreground">%</span>
         <span className="text-sm text-nowrap">{formatCurrency(tax.amount * 100, currency)}</span>
       </div>
     </div>
@@ -276,9 +276,9 @@ export function InvoicePage({ invoiceData, dispatch, currencies }: InvoicePagePr
   )
 
   return (
-    <div className="relative w-full max-w-[794px] sm:w-[794px] min-h-[297mm] bg-white shadow-lg p-2 sm:p-8 mb-8">
+    <div className="relative w-full max-w-[794px] sm:w-[794px] min-h-[297mm] rounded-2xl border border-border bg-card shadow-card p-2 sm:p-8 mb-8">
       {/* Gradient Background */}
-      <div className="absolute top-0 left-0 right-0 h-[25%] bg-gradient-to-b from-indigo-100 to-indigo-0 opacity-70" />
+      <div className="absolute top-0 left-0 right-0 h-[25%] bg-gradient-to-b from-muted/50 to-transparent opacity-70" />
 
       {/* Invoice Header */}
       <div className="flex flex-col sm:flex-row gap-4 sm:gap-8 justify-between items-start mb-8 relative">
@@ -287,7 +287,7 @@ export function InvoicePage({ invoiceData, dispatch, currencies }: InvoicePagePr
             type="text"
             value={invoiceData.title}
             onChange={(e) => dispatch({ type: "UPDATE_FIELD", field: "title", value: e.target.value })}
-            className="text-2xl sm:text-4xl font-extrabold"
+            className="text-title sm:text-display font-extrabold"
             placeholder="INVOICE"
             required
           />
@@ -324,7 +324,7 @@ export function InvoicePage({ invoiceData, dispatch, currencies }: InvoicePagePr
             type="text"
             value={invoiceData.companyDetailsLabel}
             onChange={(e) => dispatch({ type: "UPDATE_FIELD", field: "companyDetailsLabel", value: e.target.value })}
-            className="text-xs sm:text-sm font-medium"
+            className="text-caption sm:text-body font-medium"
           />
           <FormTextarea
             value={invoiceData.companyDetails}
@@ -339,7 +339,7 @@ export function InvoicePage({ invoiceData, dispatch, currencies }: InvoicePagePr
             type="text"
             value={invoiceData.billToLabel}
             onChange={(e) => dispatch({ type: "UPDATE_FIELD", field: "billToLabel", value: e.target.value })}
-            className="text-xs sm:text-sm font-medium"
+            className="text-caption sm:text-body font-medium"
           />
           <FormTextarea
             value={invoiceData.billTo}
@@ -358,15 +358,15 @@ export function InvoicePage({ invoiceData, dispatch, currencies }: InvoicePagePr
               type="text"
               value={invoiceData.issueDateLabel}
               onChange={(e) => dispatch({ type: "UPDATE_FIELD", field: "issueDateLabel", value: e.target.value })}
-              className="text-xs sm:text-sm font-medium"
-            />
+            className="text-caption sm:text-body font-medium"
+          />
             <FormInput
               type="date"
               value={invoiceData.date}
               onChange={(e) => dispatch({ type: "UPDATE_FIELD", field: "date", value: e.target.value })}
-              className="w-full border-b border-gray-300 py-1"
-              required
-            />
+            className="w-full border-b border-border py-1"
+            required
+          />
           </div>
 
           <div className="flex flex-col gap-1 w-full">
@@ -374,8 +374,8 @@ export function InvoicePage({ invoiceData, dispatch, currencies }: InvoicePagePr
               type="text"
               value={invoiceData.dueDateLabel}
               onChange={(e) => dispatch({ type: "UPDATE_FIELD", field: "dueDateLabel", value: e.target.value })}
-              className="text-xs sm:text-sm font-medium"
-            />
+            className="text-caption sm:text-body font-medium"
+          />
             <FormInput
               type="date"
               value={invoiceData.dueDate}
@@ -398,13 +398,13 @@ export function InvoicePage({ invoiceData, dispatch, currencies }: InvoicePagePr
       <div className="mb-8">
         <div className="border rounded-lg overflow-hidden">
           {/* Header row for column titles */}
-          <div className="hidden sm:flex bg-gray-50 text-xs font-medium text-gray-500 uppercase tracking-wider border-b">
+          <div className="hidden sm:flex bg-muted/30 text-caption font-medium text-muted-foreground uppercase tracking-wider border-b">
             <div className="flex-1 px-4 py-3">
               <ShadyFormInput
                 type="text"
                 value={invoiceData.itemLabel}
                 onChange={(e) => dispatch({ type: "UPDATE_FIELD", field: "itemLabel", value: e.target.value })}
-                className="text-xs font-medium text-gray-500 uppercase tracking-wider"
+                className="text-caption font-medium text-muted-foreground uppercase tracking-wider"
               />
             </div>
             <div className="w-20 px-4 py-3 text-right">
@@ -412,7 +412,7 @@ export function InvoicePage({ invoiceData, dispatch, currencies }: InvoicePagePr
                 type="text"
                 value={invoiceData.quantityLabel}
                 onChange={(e) => dispatch({ type: "UPDATE_FIELD", field: "quantityLabel", value: e.target.value })}
-                className="text-xs font-medium text-gray-500 uppercase tracking-wider text-right w-full"
+                className="text-caption font-medium text-muted-foreground uppercase tracking-wider text-right w-full"
               />
             </div>
             <div className="w-28 px-4 py-3 text-right">
@@ -420,7 +420,7 @@ export function InvoicePage({ invoiceData, dispatch, currencies }: InvoicePagePr
                 type="text"
                 value={invoiceData.unitPriceLabel}
                 onChange={(e) => dispatch({ type: "UPDATE_FIELD", field: "unitPriceLabel", value: e.target.value })}
-                className="text-xs font-medium text-gray-500 uppercase tracking-wider text-right w-full"
+                className="text-caption font-medium text-muted-foreground uppercase tracking-wider text-right w-full"
               />
             </div>
             <div className="w-28 px-4 py-3 text-right">
@@ -428,14 +428,14 @@ export function InvoicePage({ invoiceData, dispatch, currencies }: InvoicePagePr
                 type="text"
                 value={invoiceData.subtotalLabel}
                 onChange={(e) => dispatch({ type: "UPDATE_FIELD", field: "subtotalLabel", value: e.target.value })}
-                className="text-xs font-medium text-gray-500 uppercase tracking-wider text-right w-full"
+                className="text-caption font-medium text-muted-foreground uppercase tracking-wider text-right w-full"
               />
             </div>
             <div className="w-10 px-2 py-3"></div>
           </div>
 
           {/* Invoice items */}
-          <div className="flex flex-col divide-y divide-gray-200">
+          <div className="flex flex-col divide-y divide-border">
             {invoiceData.items.map((item, index) => (
               <ItemRow
                 key={index}
@@ -459,7 +459,7 @@ export function InvoicePage({ invoiceData, dispatch, currencies }: InvoicePagePr
         <FormTextarea
           value={invoiceData.notes}
           onChange={(e) => dispatch({ type: "UPDATE_FIELD", field: "notes", value: e.target.value })}
-          className="w-full border border-gray-300 rounded p-2 text-xs sm:text-sm"
+          className="w-full border border-input rounded p-2 text-caption sm:text-body bg-background"
           rows={3}
           placeholder="Additional notes or terms"
         />
@@ -473,7 +473,7 @@ export function InvoicePage({ invoiceData, dispatch, currencies }: InvoicePagePr
               type="text"
               value={invoiceData.summarySubtotalLabel}
               onChange={(e) => dispatch({ type: "UPDATE_FIELD", field: "summarySubtotalLabel", value: e.target.value })}
-              className="text-xs sm:text-sm font-medium text-gray-600"
+              className="text-caption sm:text-body font-medium text-muted-foreground"
             />
             <span className="text-xs sm:text-sm">{formatCurrency(subtotal * 100, invoiceData.currency)}</span>
           </div>
@@ -514,7 +514,7 @@ export function InvoicePage({ invoiceData, dispatch, currencies }: InvoicePagePr
               type="text"
               value={invoiceData.summaryTotalLabel}
               onChange={(e) => dispatch({ type: "UPDATE_FIELD", field: "summaryTotalLabel", value: e.target.value })}
-              className="text-sm sm:text-md font-bold"
+              className="text-body sm:text-subtitle font-bold"
             />
             <span className="text-sm sm:text-md font-bold text-nowrap">
               {formatCurrency(total * 100, invoiceData.currency)}
@@ -528,7 +528,7 @@ export function InvoicePage({ invoiceData, dispatch, currencies }: InvoicePagePr
         <textarea
           value={invoiceData.bankDetails}
           onChange={(e) => dispatch({ type: "UPDATE_FIELD", field: "bankDetails", value: e.target.value })}
-          className="text-center text-xs sm:text-sm text-muted-foreground w-full mx-auto border border-gray-300 rounded p-2"
+          className="text-center text-caption sm:text-body text-muted-foreground w-full mx-auto border border-input rounded p-2 bg-background"
           rows={3}
           placeholder="Bank and Payment Details: Account number, Bank name, IBAN, SWIFT/BIC, Your Email (optional)"
           required
@@ -541,7 +541,7 @@ export function InvoicePage({ invoiceData, dispatch, currencies }: InvoicePagePr
 function ShadyFormInput({ className = "", ...props }: { className?: string } & InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
-      className={`bg-transparent border border-transparent outline-none p-0 w-full hover:border-dashed hover:border-gray-200 hover:bg-gray-50 focus:bg-gray-50 hover:rounded-sm ${className}`}
+      className={`bg-transparent border border-transparent outline-none p-0 w-full hover:border-dashed hover:border-border hover:bg-muted/30 focus:bg-muted/30 hover:rounded-sm ${className}`}
       {...props}
     />
   )

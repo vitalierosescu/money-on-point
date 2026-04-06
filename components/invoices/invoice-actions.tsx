@@ -104,7 +104,7 @@ export function InvoiceActions({ invoice }: { invoice: InvoiceWithCustomer }) {
       )}
       {invoice.providerError && <p className="mt-2 text-xs text-destructive">{invoice.providerError}</p>}
       {peppolWasDelivered && (
-        <p className="mt-2 text-xs text-emerald-700">
+        <p className="mt-2 text-xs text-success">
           Deze factuur is al via PEPPOL verzonden. Gebruik de providerreferentie hierboven als naslag.
         </p>
       )}
@@ -164,7 +164,7 @@ export function InvoiceActions({ invoice }: { invoice: InvoiceWithCustomer }) {
                 {peppolWasDelivered ? "Ontvanger geverifieerd" : "Ontvanger verifiëren"}
               </Button>
               {peppolWasDelivered ? (
-                <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                <div className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
                   Via PEPPOL verzonden.
                 </div>
               ) : (

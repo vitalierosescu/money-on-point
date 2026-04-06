@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/sidebar"
 import { UserProfile } from "@/lib/auth"
 import config from "@/lib/config"
-import { BarChart3, ClockArrowUp, CreditCard, Gift, House, Import, LayoutDashboard, Receipt, Settings, Upload, Users } from "lucide-react"
+import { BarChart3, ClockArrowUp, CreditCard, Files, Gift, House, Import, Receipt, Settings, Upload, Users } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -119,11 +119,11 @@ export function AppSidebar({
                   </SidebarMenuButton>
                 </SidebarMenuItemWithHighlight>
 
-                <SidebarMenuItemWithHighlight href="/apps">
+                <SidebarMenuItemWithHighlight href="/files">
                   <SidebarMenuButton asChild>
-                    <Link href="/apps">
-                      <LayoutDashboard />
-                      <span>Apps</span>
+                    <Link href="/files">
+                      <Files />
+                      <span>Files</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItemWithHighlight>

@@ -8,6 +8,7 @@ import { nextCookies } from "better-auth/next-js"
 import { emailOTP } from "better-auth/plugins/email-otp"
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
+import { cache } from "react"
 import { prisma } from "./db"
 import { resend, sendOTPCodeEmail } from "./email"
 
@@ -75,7 +76,7 @@ export async function getSession() {
   })
 }
 
-export async function getCurrentUser(): Promise<User> {
+export const getCurrentUser = cache(async (): Promise<User> => {
   if (config.selfHosted.isEnabled) {
     const user = await getSelfHostedUser()
     if (user) {
@@ -96,7 +97,7 @@ export async function getCurrentUser(): Promise<User> {
 
   // No session or user found
   redirect(config.auth.loginUrl)
-}
+})
 
 export function isSubscriptionExpired(user: User) {
   if (config.selfHosted.isEnabled) {

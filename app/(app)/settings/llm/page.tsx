@@ -11,7 +11,7 @@ export default async function LlmSettingsPage() {
 
   return (
     <>
-      <div className="w-full max-w-2xl">
+      <div className="w-full max-w-2xl space-y-space-6">
         <LLMSettingsForm settings={settings} fields={fields} showApiKey={config.selfHosted.isEnabled} />
       </div>
     </>

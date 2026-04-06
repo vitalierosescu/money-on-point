@@ -3,6 +3,7 @@ import { getAuthorRightsYearReport } from "@/models/author-rights"
 import type { Metadata } from "next"
 import { getCurrentUser } from "@/lib/auth"
 import { ReportsTabs } from "@/components/reports/reports-tabs"
+import { PageHeader } from "@/components/ui/page-header"
 import { PageShell } from "@/components/ui/page-shell"
 import { getMonthlyRevenue, getVatSummary, getTimeSeriesStats } from "@/models/stats"
 import { getOutstandingInvoices } from "@/models/invoices"
@@ -36,11 +37,7 @@ export default async function ReportsPage({
 
   return (
     <PageShell>
-      <header className="flex items-center justify-between gap-2 mb-8">
-        <h2 className="flex flex-row gap-3 md:gap-4 items-baseline">
-          <span className="text-3xl font-bold tracking-tight">Reports</span>
-        </h2>
-      </header>
+      <PageHeader title="Reports" className="mb-space-6" />
       <ReportsTabs
         year={year}
         monthlyRevenue={monthlyRevenue}

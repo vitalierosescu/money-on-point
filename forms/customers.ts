@@ -15,6 +15,7 @@ export const customerSchema = z.object({
   country: z.string().optional(),
   vatNumber: z.string().optional(),
   peppolId: z.string().optional(),
+  invoiceDeliveryMethod: z.enum(["peppol", "email_pdf", "manual_choice"]).optional(),
   defaultRate: z.number().optional(),
   defaultCurrency: z.string().optional(),
   note: z.string().optional(),

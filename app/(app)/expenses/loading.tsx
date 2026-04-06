@@ -1,10 +1,11 @@
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { PageShell } from "@/components/ui/page-shell"
 import { Download, Loader2, Plus } from "lucide-react"
 
 export default function Loading() {
   return (
-    <>
+    <PageShell>
       <header className="flex items-center justify-between mb-12">
         <h2 className="flex flex-row gap-3 md:gap-5">
           <span className="text-3xl font-bold tracking-tight">Expenses</span>
@@ -36,6 +37,6 @@ export default function Loading() {
           ))}
         </div>
       </main>
-    </>
+    </PageShell>
   )
 }

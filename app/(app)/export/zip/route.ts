@@ -2,8 +2,8 @@ import { getCurrentUser } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import { Prisma } from "@/prisma/client"
 import { parseYearParam } from "@/lib/parse-year-param"
-import { generateInvoicePDF } from "@/app/(app)/apps/invoices/actions"
-import type { InvoiceFormData } from "@/app/(app)/apps/invoices/components/invoice-page"
+import { generateInvoicePDF } from "@/lib/invoice-pdf/generate"
+import type { InvoiceFormData } from "@/lib/invoice-pdf/types"
 import JSZip from "jszip"
 
 export async function GET(request: Request) {

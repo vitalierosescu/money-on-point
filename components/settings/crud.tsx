@@ -1,10 +1,13 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { EmptyState } from "@/components/ui/empty-state"
 import { Input } from "@/components/ui/input"
+import { NativeSelect } from "@/components/ui/native-select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Check, Edit, Trash2 } from "lucide-react"
-import { useOptimistic, useState } from "react"
+import { useState } from "react"
 
 interface CrudColumn<T> {
   key: keyof T
@@ -23,12 +26,12 @@ interface CrudProps<T> {
   onEdit?: (id: string, data: Partial<T>) => Promise<{ success: boolean; error?: string }>
 }
 
-export function CrudTable<T extends { [key: string]: any }>({ items, columns, onDelete, onAdd, onEdit }: CrudProps<T>) {
+export function CrudTable<T extends { id?: string; code?: string } & Record<string, unknown>>(props: CrudProps<T>) {
+  const { items: tableItems, columns, onDelete, onAdd, onEdit } = props
   const [isAdding, setIsAdding] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [newItem, setNewItem] = useState<Partial<T>>(itemDefaults(columns))
   const [editingItem, setEditingItem] = useState<Partial<T>>(itemDefaults(columns))
-  const [optimisticItems, addOptimisticItem] = useOptimistic(items, (state, newItem: T) => [...state, newItem])
 
   const FormCell = (item: T, column: CrudColumn<T>) => {
     if (column.type === "checkbox") {
@@ -43,29 +46,27 @@ export function CrudTable<T extends { [key: string]: any }>({ items, columns, on
         </div>
       )
     }
-    return item[column.key]
+    return String(item[column.key] ?? "")
   }
 
   const EditFormCell = (item: T, column: CrudColumn<T>) => {
     if (column.type === "checkbox") {
       return (
-        <input
-          type="checkbox"
-          checked={editingItem[column.key]}
+        <Checkbox
+          checked={Boolean(editingItem[column.key])}
           aria-label={String(column.label)}
-          onChange={(e) =>
+          onCheckedChange={(checked) =>
             setEditingItem({
               ...editingItem,
-              [column.key]: e.target.checked,
+              [column.key]: checked === true,
             })
           }
         />
       )
     } else if (column.type === "select") {
       return (
-        <select
-          value={editingItem[column.key]}
-          className="p-2 rounded-md border bg-transparent"
+        <NativeSelect
+          value={String(editingItem[column.key] ?? "")}
           aria-label={String(column.label)}
           onChange={(e) =>
             setEditingItem({
@@ -79,28 +80,23 @@ export function CrudTable<T extends { [key: string]: any }>({ items, columns, on
               {option}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       )
     } else if (column.type === "color" || column.key === "color") {
       return (
         <div className="flex items-center gap-2">
-          <div className="relative">
-            <span
-              className="block h-4 w-4 rounded-full border"
-              style={{ backgroundColor: (editingItem[column.key] as string) || "#000" }}
-            />
-            <input
-              type="color"
-              className="absolute inset-0 h-4 w-4 opacity-0 cursor-pointer"
-              value={(editingItem[column.key] as string) || "#000"}
-              onChange={(e) =>
-                setEditingItem({
-                  ...editingItem,
-                  [column.key]: e.target.value,
-                })
-              }
-            />
-          </div>
+          <Input
+            type="color"
+            className="h-8 w-8 p-0 border-0 bg-transparent"
+            value={(editingItem[column.key] as string) || "#000"}
+            onChange={(e) =>
+              setEditingItem({
+                ...editingItem,
+                [column.key]: e.target.value,
+              })
+            }
+            aria-label={`${String(column.label)} color`}
+          />
           <Input
             type="text"
             value={(editingItem[column.key] as string) || ""}
@@ -120,7 +116,7 @@ export function CrudTable<T extends { [key: string]: any }>({ items, columns, on
     return (
       <Input
         type="text"
-        value={editingItem[column.key] || ""}
+        value={String(editingItem[column.key] ?? "")}
         aria-label={String(column.label)}
         onChange={(e) =>
           setEditingItem({
@@ -135,23 +131,21 @@ export function CrudTable<T extends { [key: string]: any }>({ items, columns, on
   const AddFormCell = (column: CrudColumn<T>) => {
     if (column.type === "checkbox") {
       return (
-        <input
-          type="checkbox"
+        <Checkbox
           checked={Boolean(newItem[column.key] || column.defaultValue)}
           aria-label={String(column.label)}
-          onChange={(e) =>
+          onCheckedChange={(checked) =>
             setNewItem({
               ...newItem,
-              [column.key]: e.target.checked,
+              [column.key]: checked === true,
             })
           }
         />
       )
     } else if (column.type === "select") {
       return (
-        <select
+        <NativeSelect
           value={String(newItem[column.key] || column.defaultValue || "")}
-          className="p-2 rounded-md border bg-transparent"
           aria-label={String(column.label)}
           onChange={(e) =>
             setNewItem({
@@ -165,28 +159,23 @@ export function CrudTable<T extends { [key: string]: any }>({ items, columns, on
               {option}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       )
     } else if (column.type === "color" || column.key === "color") {
       return (
         <div className="flex items-center gap-2">
-          <div className="relative">
-            <span
-              className="block h-4 w-4 rounded-full border"
-              style={{ backgroundColor: String(newItem[column.key] || column.defaultValue || "#000") }}
-            />
-            <input
-              type="color"
-              className="absolute inset-0 h-4 w-4 opacity-0 cursor-pointer"
-              value={String(newItem[column.key] || column.defaultValue || "#000")}
-              onChange={(e) =>
-                setNewItem({
-                  ...newItem,
-                  [column.key]: e.target.value,
-                })
-              }
-            />
-          </div>
+          <Input
+            type="color"
+            className="h-8 w-8 p-0 border-0 bg-transparent"
+            value={String(newItem[column.key] || column.defaultValue || "#000")}
+            onChange={(e) =>
+              setNewItem({
+                ...newItem,
+                [column.key]: e.target.value,
+              })
+            }
+            aria-label={`${String(column.label)} color`}
+          />
           <Input
             type="text"
             value={String(newItem[column.key] || column.defaultValue || "")}
@@ -247,9 +236,13 @@ export function CrudTable<T extends { [key: string]: any }>({ items, columns, on
   }
 
   const startEditing = (item: T) => {
-    setEditingId(item.code || item.id)
+    setEditingId(item.code ?? item.id ?? null)
     setEditingItem(item)
   }
+
+  const getItemId = (item: T) => item.code ?? item.id ?? null
+  const getItemLabel = (item: T) => String(item["name"] ?? getItemId(item) ?? "item")
+  const isItemDeletable = (item: T) => Boolean(item["isDeletable"])
 
   const handleDelete = async (id: string) => {
     try {
@@ -260,6 +253,26 @@ export function CrudTable<T extends { [key: string]: any }>({ items, columns, on
     } catch (error) {
       console.error("Failed to delete item:", error)
     }
+  }
+
+  if (tableItems.length === 0 && !isAdding) {
+    return (
+      <div className="space-y-4">
+        <EmptyState
+          title="No items yet."
+          description="Add your first item to get started."
+        />
+        <Button
+          onClick={() => {
+            setIsAdding(true)
+            setEditingId(null)
+          }}
+          aria-label="Add new item"
+        >
+          Add New
+        </Button>
+      </div>
+    )
   }
 
   return (
@@ -274,57 +287,62 @@ export function CrudTable<T extends { [key: string]: any }>({ items, columns, on
           </TableRow>
         </TableHeader>
         <TableBody>
-          {optimisticItems.map((item, index) => (
-            <TableRow key={index}>
-              {columns.map((column) => (
-                <TableCell key={String(column.key)} className="first:font-semibold">
-                  {editingId === (item.code || item.id) && column.editable
-                    ? EditFormCell(item, column)
-                    : FormCell(item, column)}
+          {tableItems.map((item: T, index: number) => {
+            const itemId = getItemId(item)
+            const itemLabel = getItemLabel(item)
+
+            return (
+              <TableRow key={itemId ?? index}>
+                {columns.map((column) => (
+                  <TableCell key={String(column.key)} className="first:font-semibold">
+                    {editingId === itemId && column.editable
+                      ? EditFormCell(item, column)
+                      : FormCell(item, column)}
+                  </TableCell>
+                ))}
+                <TableCell>
+                  <div className="flex gap-2">
+                    {editingId === itemId && itemId ? (
+                      <>
+                        <Button size="sm" onClick={() => handleEdit(itemId)} aria-label="Save changes">
+                          Save
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => setEditingId(null)} aria-label="Cancel editing">
+                          Cancel
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        {onEdit && itemId && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              startEditing(item)
+                              setIsAdding(false)
+                            }}
+                            aria-label={`Edit ${itemLabel}`}
+                          >
+                            <Edit />
+                          </Button>
+                        )}
+                        {itemId && isItemDeletable(item) && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDelete(itemId)}
+                            aria-label={`Delete ${itemLabel}`}
+                          >
+                            <Trash2 />
+                          </Button>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </TableCell>
-              ))}
-              <TableCell>
-                <div className="flex gap-2">
-                  {editingId === (item.code || item.id) ? (
-                    <>
-                      <Button size="sm" onClick={() => handleEdit(item.code || item.id)} aria-label="Save changes">
-                        Save
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => setEditingId(null)} aria-label="Cancel editing">
-                        Cancel
-                      </Button>
-                    </>
-                  ) : (
-                    <>
-                      {onEdit && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            startEditing(item)
-                            setIsAdding(false)
-                          }}
-                          aria-label={`Edit ${String(item.name || item.code || 'item')}`}
-                        >
-                          <Edit />
-                        </Button>
-                      )}
-                      {item.isDeletable && (
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          onClick={() => handleDelete(item.code || item.id)}
-                          aria-label={`Delete ${String(item.name || item.code || 'item')}`}
-                        >
-                          <Trash2 />
-                        </Button>
-                      )}
-                    </>
-                  )}
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
+              </TableRow>
+            )
+          })}
           {isAdding && (
             <TableRow>
               {columns.map((column) => (

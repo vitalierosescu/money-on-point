@@ -7,6 +7,7 @@ export const FormSelectType = ({
   placeholder,
   hideIfEmpty = false,
   isRequired = false,
+  options,
   ...props
 }: {
   title: string
@@ -14,8 +15,9 @@ export const FormSelectType = ({
   placeholder?: string
   hideIfEmpty?: boolean
   isRequired?: boolean
+  options?: Array<{ code: string; name: string; badge?: string }>
 } & SelectProps) => {
-  const items = [
+  const items = options ?? [
     { code: "expense", name: "Expense", badge: "↓" },
     { code: "income", name: "Income", badge: "↑" },
     { code: "pending", name: "Pending", badge: "⏲︎" },

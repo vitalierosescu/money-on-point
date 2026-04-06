@@ -20,6 +20,9 @@ import type { AuthorRightsYearReport } from "@/models/author-rights"
 import type { InvoiceWithCustomer } from "@/models/invoices"
 import { InvoiceStatusBadge } from "@/components/invoices/invoice-status-badge"
 import Link from "next/link"
+import { EmptyState } from "@/components/ui/empty-state"
+import { StatCard } from "@/components/ui/stat-card"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 interface ReportsTabsProps {
   year: number
@@ -94,20 +97,16 @@ export function ReportsTabs({
         {/* OMZET TAB */}
         <TabsContent value="omzet" className="space-y-6 pt-4">
           <div className="grid grid-cols-3 gap-4">
-            <div className="rounded-lg border p-4">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Totale omzet</p>
-              <p className="text-2xl font-mono tabular-nums font-semibold">{fmt(totalRevenue, defaultCurrency)}</p>
-            </div>
-            <div className="rounded-lg border p-4">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Facturen betaald</p>
-              <p className="text-2xl font-mono tabular-nums font-semibold">{totalInvoices}</p>
-            </div>
-            <div className="rounded-lg border p-4">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Gemiddeld per factuur</p>
-              <p className="text-2xl font-mono tabular-nums font-semibold">
-                {totalInvoices > 0 ? fmt(totalRevenue / totalInvoices, defaultCurrency) : "–"}
-              </p>
-            </div>
+            <StatCard label="Totale omzet" value={<span className="font-mono tabular-nums">{fmt(totalRevenue, defaultCurrency)}</span>} />
+            <StatCard label="Facturen betaald" value={<span className="font-mono tabular-nums">{totalInvoices}</span>} />
+            <StatCard
+              label="Gemiddeld per factuur"
+              value={
+                <span className="font-mono tabular-nums">
+                  {totalInvoices > 0 ? fmt(totalRevenue / totalInvoices, defaultCurrency) : "–"}
+                </span>
+              }
+            />
           </div>
           <div className="rounded-lg border p-5">
             <p className="text-sm font-medium mb-4">Maandelijkse omzet {year}</p>
@@ -140,9 +139,10 @@ export function ReportsTabs({
         {/* CASHFLOW TAB */}
         <TabsContent value="cashflow" className="space-y-6 pt-4">
           {cashflowData.length === 0 ? (
-            <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">
-              Geen cashflow data voor {year}.
-            </div>
+            <EmptyState
+              title={`Geen cashflow data voor ${year}.`}
+              description="Probeer een ander jaar of importeer eerst je transacties."
+            />
           ) : (
             <div className="rounded-lg border p-5">
               <p className="text-sm font-medium mb-4">Inkomsten vs Uitgaven {year}</p>
@@ -171,42 +171,43 @@ export function ReportsTabs({
 
         {/* OPENSTAAND TAB */}
         <TabsContent value="openstaand" className="space-y-4 pt-4">
-          <div className="rounded-lg border p-4 flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">Totaal openstaand</p>
-            <p className="text-lg font-mono tabular-nums font-semibold">
-              {fmt(totalOutstanding / 100, defaultCurrency)}
-            </p>
-          </div>
+          <StatCard
+            label="Totaal openstaand"
+            value={<span className="font-mono tabular-nums">{fmt(totalOutstanding / 100, defaultCurrency)}</span>}
+          />
           {outstandingInvoices.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-8 text-center">Geen openstaande facturen.</p>
+            <EmptyState
+              title="Geen openstaande facturen."
+              description="Zodra een factuur onbetaald is, verschijnt die hier."
+            />
           ) : (
             <div className="rounded-lg border overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/20 border-b">
-                  <tr>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Factuur</th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Klant</th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Vervaldatum</th>
-                    <th className="px-3 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wide">Openstaand</th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
+              <Table>
+                <TableHeader className="bg-muted/20">
+                  <TableRow>
+                    <TableHead className="px-3 py-3 text-xs uppercase tracking-wide">Factuur</TableHead>
+                    <TableHead className="px-3 py-3 text-xs uppercase tracking-wide">Klant</TableHead>
+                    <TableHead className="px-3 py-3 text-xs uppercase tracking-wide">Vervaldatum</TableHead>
+                    <TableHead className="px-3 py-3 text-right text-xs uppercase tracking-wide">Openstaand</TableHead>
+                    <TableHead className="px-3 py-3 text-xs uppercase tracking-wide">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="divide-y">
                   {outstandingInvoices.map((inv) => {
                     const remaining = (inv.total - inv.paidAmount) / 100
                     const isOverdue =
                       inv.dueDate && new Date(inv.dueDate) < new Date() && inv.status !== "paid"
                     return (
-                      <tr key={inv.id} className="hover:bg-muted/30 transition-colors">
-                        <td className="px-3 py-3 font-mono tabular-nums">
+                      <TableRow key={inv.id} className="hover:bg-muted/30">
+                        <TableCell className="px-3 py-3 font-mono tabular-nums">
                           <Link href={`/invoices/${inv.id}`} className="hover:underline">
                             {inv.invoiceNumber}
                           </Link>
-                        </td>
-                        <td className="px-3 py-3 text-muted-foreground">{inv.customer?.name ?? "–"}</td>
-                        <td
+                        </TableCell>
+                        <TableCell className="px-3 py-3 text-muted-foreground">{inv.customer?.name ?? "–"}</TableCell>
+                        <TableCell
                           className={`px-3 py-3 font-mono tabular-nums text-sm ${
-                            isOverdue ? "text-red-600" : "text-muted-foreground"
+                            isOverdue ? "text-destructive" : "text-muted-foreground"
                           }`}
                         >
                           {inv.dueDate
@@ -216,18 +217,18 @@ export function ReportsTabs({
                                 year: "numeric",
                               }).format(new Date(inv.dueDate))
                             : "–"}
-                        </td>
-                        <td className="px-3 py-3 text-right font-mono tabular-nums">
+                        </TableCell>
+                        <TableCell className="px-3 py-3 text-right font-mono tabular-nums">
                           {fmt(remaining, inv.currency)}
-                        </td>
-                        <td className="px-3 py-3">
+                        </TableCell>
+                        <TableCell className="px-3 py-3">
                           <InvoiceStatusBadge status={inv.status} />
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     )
                   })}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           )}
         </TabsContent>
@@ -238,62 +239,76 @@ export function ReportsTabs({
             Gebaseerd op betaalde facturen en betaalde uitgaven in {year}. BTW op uitgaven vereist dat het BTW-bedrag ingevuld is per uitgave.
           </p>
           <div className="rounded-lg border overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/20 border-b">
-                <tr>
-                  <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Kwartaal</th>
-                  <th className="px-3 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wide">Omzet excl. BTW</th>
-                  <th className="px-3 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wide">BTW ontvangen</th>
-                  <th className="px-3 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wide">BTW betaald</th>
-                  <th className="px-3 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wide font-semibold">Te betalen</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
+            <Table>
+              <TableHeader className="bg-muted/20">
+                <TableRow>
+                  <TableHead className="px-3 py-3 text-xs uppercase tracking-wide">Kwartaal</TableHead>
+                  <TableHead className="px-3 py-3 text-right text-xs uppercase tracking-wide">Omzet excl. BTW</TableHead>
+                  <TableHead className="px-3 py-3 text-right text-xs uppercase tracking-wide">BTW ontvangen</TableHead>
+                  <TableHead className="px-3 py-3 text-right text-xs uppercase tracking-wide">BTW betaald</TableHead>
+                  <TableHead className="px-3 py-3 text-right text-xs uppercase tracking-wide font-semibold">Te betalen</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody className="divide-y">
                 {vatSummary.map((q) => (
-                  <tr key={q.quarter} className="hover:bg-muted/30 transition-colors">
-                    <td className="px-3 py-3 font-medium">{q.quarter}</td>
-                    <td className="px-3 py-3 text-right font-mono tabular-nums">{fmt(q.invoiceSubtotal, defaultCurrency)}</td>
-                    <td className="px-3 py-3 text-right font-mono tabular-nums">{fmt(q.vatCollected, defaultCurrency)}</td>
-                    <td className="px-3 py-3 text-right font-mono tabular-nums text-muted-foreground">{fmt(q.vatPaid, defaultCurrency)}</td>
-                    <td
+                  <TableRow key={q.quarter} className="hover:bg-muted/30">
+                    <TableCell className="px-3 py-3 font-medium">{q.quarter}</TableCell>
+                    <TableCell className="px-3 py-3 text-right font-mono tabular-nums">
+                      {fmt(q.invoiceSubtotal, defaultCurrency)}
+                    </TableCell>
+                    <TableCell className="px-3 py-3 text-right font-mono tabular-nums">
+                      {fmt(q.vatCollected, defaultCurrency)}
+                    </TableCell>
+                    <TableCell className="px-3 py-3 text-right font-mono tabular-nums text-muted-foreground">
+                      {fmt(q.vatPaid, defaultCurrency)}
+                    </TableCell>
+                    <TableCell
                       className={`px-3 py-3 text-right font-mono tabular-nums font-semibold ${
                         q.netVat <= 0 ? "text-emerald-700" : ""
                       }`}
                     >
                       {fmt(q.netVat, defaultCurrency)}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-                <tr className="bg-muted/20 font-semibold border-t-2">
-                  <td className="px-3 py-3">Totaal</td>
-                  <td className="px-3 py-3 text-right font-mono tabular-nums">{fmt(vatSummary.reduce((s, q) => s + q.invoiceSubtotal, 0), defaultCurrency)}</td>
-                  <td className="px-3 py-3 text-right font-mono tabular-nums">{fmt(vatSummary.reduce((s, q) => s + q.vatCollected, 0), defaultCurrency)}</td>
-                  <td className="px-3 py-3 text-right font-mono tabular-nums text-muted-foreground">{fmt(vatSummary.reduce((s, q) => s + q.vatPaid, 0), defaultCurrency)}</td>
-                  <td className="px-3 py-3 text-right font-mono tabular-nums">{fmt(vatSummary.reduce((s, q) => s + q.netVat, 0), defaultCurrency)}</td>
-                </tr>
-              </tbody>
-            </table>
+                <TableRow className="bg-muted/20 font-semibold border-t-2">
+                  <TableCell className="px-3 py-3">Totaal</TableCell>
+                  <TableCell className="px-3 py-3 text-right font-mono tabular-nums">
+                    {fmt(vatSummary.reduce((s, q) => s + q.invoiceSubtotal, 0), defaultCurrency)}
+                  </TableCell>
+                  <TableCell className="px-3 py-3 text-right font-mono tabular-nums">
+                    {fmt(vatSummary.reduce((s, q) => s + q.vatCollected, 0), defaultCurrency)}
+                  </TableCell>
+                  <TableCell className="px-3 py-3 text-right font-mono tabular-nums text-muted-foreground">
+                    {fmt(vatSummary.reduce((s, q) => s + q.vatPaid, 0), defaultCurrency)}
+                  </TableCell>
+                  <TableCell className="px-3 py-3 text-right font-mono tabular-nums">
+                    {fmt(vatSummary.reduce((s, q) => s + q.netVat, 0), defaultCurrency)}
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
           </div>
         </TabsContent>
 
         <TabsContent value="auteursrechten" className="space-y-6 pt-4">
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <div className="rounded-lg border p-4">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Bruto auteursrechten</p>
-              <p className="text-2xl font-mono tabular-nums font-semibold">{fmt(authorRightsReport.authorRightsGross, defaultCurrency)}</p>
-            </div>
-            <div className="rounded-lg border p-4">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Roerende voorheffing</p>
-              <p className="text-2xl font-mono tabular-nums font-semibold">{fmt(authorRightsReport.withholding, defaultCurrency)}</p>
-            </div>
-            <div className="rounded-lg border p-4">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Netto auteursrechten</p>
-              <p className="text-2xl font-mono tabular-nums font-semibold">{fmt(authorRightsReport.netRights, defaultCurrency)}</p>
-            </div>
-            <div className="rounded-lg border p-4">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-1">Facturen</p>
-              <p className="text-2xl font-mono tabular-nums font-semibold">{authorRightsReport.invoiceCount}</p>
-            </div>
+            <StatCard
+              label="Bruto auteursrechten"
+              value={<span className="font-mono tabular-nums">{fmt(authorRightsReport.authorRightsGross, defaultCurrency)}</span>}
+            />
+            <StatCard
+              label="Roerende voorheffing"
+              value={<span className="font-mono tabular-nums">{fmt(authorRightsReport.withholding, defaultCurrency)}</span>}
+            />
+            <StatCard
+              label="Netto auteursrechten"
+              value={<span className="font-mono tabular-nums">{fmt(authorRightsReport.netRights, defaultCurrency)}</span>}
+            />
+            <StatCard
+              label="Facturen"
+              value={<span className="font-mono tabular-nums">{authorRightsReport.invoiceCount}</span>}
+            />
           </div>
 
           <div className="rounded-lg border p-5">
@@ -343,33 +358,42 @@ export function ReportsTabs({
           </div>
 
           {authorRightsReport.customerTotals.length === 0 ? (
-            <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">
-              Geen auteursrechtenfacturen voor {year}.
-            </div>
+            <EmptyState
+              title={`Geen auteursrechtenfacturen voor ${year}.`}
+              description="Zodra je auteursrechten factureert, verschijnt de klantverdeling hier."
+            />
           ) : (
             <div className="rounded-lg border overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/20 border-b">
-                  <tr>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Klant</th>
-                    <th className="px-3 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wide">Facturen</th>
-                    <th className="px-3 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wide">Bruto rechten</th>
-                    <th className="px-3 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wide">Voorheffing</th>
-                    <th className="px-3 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wide">Netto rechten</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
+              <Table>
+                <TableHeader className="bg-muted/20">
+                  <TableRow>
+                    <TableHead className="px-3 py-3 text-xs uppercase tracking-wide">Klant</TableHead>
+                    <TableHead className="px-3 py-3 text-right text-xs uppercase tracking-wide">Facturen</TableHead>
+                    <TableHead className="px-3 py-3 text-right text-xs uppercase tracking-wide">Bruto rechten</TableHead>
+                    <TableHead className="px-3 py-3 text-right text-xs uppercase tracking-wide">Voorheffing</TableHead>
+                    <TableHead className="px-3 py-3 text-right text-xs uppercase tracking-wide">Netto rechten</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="divide-y">
                   {authorRightsReport.customerTotals.map((row) => (
-                    <tr key={row.customerId ?? row.customerName} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-3 py-3">{row.customerName}</td>
-                      <td className="px-3 py-3 text-right font-mono tabular-nums">{row.invoiceCount}</td>
-                      <td className="px-3 py-3 text-right font-mono tabular-nums">{fmt(row.authorRightsGross, defaultCurrency)}</td>
-                      <td className="px-3 py-3 text-right font-mono tabular-nums">{fmt(row.withholding, defaultCurrency)}</td>
-                      <td className="px-3 py-3 text-right font-mono tabular-nums">{fmt(row.netRights, defaultCurrency)}</td>
-                    </tr>
+                    <TableRow key={row.customerId ?? row.customerName} className="hover:bg-muted/30">
+                      <TableCell className="px-3 py-3">{row.customerName}</TableCell>
+                      <TableCell className="px-3 py-3 text-right font-mono tabular-nums">
+                        {row.invoiceCount}
+                      </TableCell>
+                      <TableCell className="px-3 py-3 text-right font-mono tabular-nums">
+                        {fmt(row.authorRightsGross, defaultCurrency)}
+                      </TableCell>
+                      <TableCell className="px-3 py-3 text-right font-mono tabular-nums">
+                        {fmt(row.withholding, defaultCurrency)}
+                      </TableCell>
+                      <TableCell className="px-3 py-3 text-right font-mono tabular-nums">
+                        {fmt(row.netRights, defaultCurrency)}
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           )}
         </TabsContent>
