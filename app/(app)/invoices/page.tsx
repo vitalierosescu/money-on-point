@@ -3,6 +3,12 @@ import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/ui/page-header"
 import { getCurrentUser } from "@/lib/auth"
 import { getInvoices, InvoiceFilters } from "@/models/invoices"
+import { getSettings } from "@/models/settings"
+import {
+  getActiveRecommandEnvironment,
+  getRecommandEnvironmentLabel,
+  hasConfiguredRecommandCredentials,
+} from "@/lib/recommand-settings"
 import { Plus } from "lucide-react"
 import { Metadata } from "next"
 import Link from "next/link"
@@ -19,7 +25,10 @@ export default async function InvoicesPage({
 }) {
   const filters = await searchParams
   const user = await getCurrentUser()
-  const invoices = await getInvoices(user.id, filters)
+  const [invoices, settings] = await Promise.all([getInvoices(user.id, filters), getSettings(user.id)])
+  const activeRecommandEnvironment = getActiveRecommandEnvironment(settings)
+  const hasRecommandCredentials = hasConfiguredRecommandCredentials(settings, activeRecommandEnvironment)
+  const recommandEnvironmentLabel = getRecommandEnvironmentLabel(activeRecommandEnvironment)
 
   return (
     <>
@@ -36,7 +45,11 @@ export default async function InvoicesPage({
         }
       />
 
-      <InvoiceList invoices={invoices} />
+      <InvoiceList
+        invoices={invoices}
+        hasRecommandCredentials={hasRecommandCredentials}
+        recommandEnvironmentLabel={recommandEnvironmentLabel}
+      />
     </>
   )
 }

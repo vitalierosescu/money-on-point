@@ -41,6 +41,11 @@ type DeliveryUserLike = {
   businessBankDetails?: string | null
 }
 
+type DeliveryReadinessContext = {
+  hasRecommandCredentials?: boolean
+  environmentLabel?: string
+}
+
 function isBlank(value: string | null | undefined) {
   return !value || value.trim().length === 0
 }
@@ -123,7 +128,10 @@ export function isPeppolDeliveryReadyForCustomer(customer?: DeliveryCustomerLike
   return !isBlank(customer?.peppolId) && !isBlank(customer?.name as string | null | undefined) && hasCustomerPostalAddress(customer)
 }
 
-export function getInvoiceDeliveryReadiness(invoice?: DeliveryInvoiceLike | null): {
+export function getInvoiceDeliveryReadiness(
+  invoice?: DeliveryInvoiceLike | null,
+  context?: DeliveryReadinessContext
+): {
   method: InvoiceDeliveryMethod
   isReady: boolean
   reason: string | null
@@ -132,10 +140,30 @@ export function getInvoiceDeliveryReadiness(invoice?: DeliveryInvoiceLike | null
   const customer = invoice?.customer
 
   if (method === "email_pdf") {
+    const emailReady = isEmailDeliveryReady(customer)
+    const hasRecommand = context?.hasRecommandCredentials ?? true
+
+    if (!emailReady) {
+      return {
+        method,
+        isReady: false,
+        reason: "Add a billing email before sending by email.",
+      }
+    }
+
+    if (!hasRecommand) {
+      const environmentText = context?.environmentLabel ? `${context.environmentLabel} environment` : "environment"
+      return {
+        method,
+        isReady: false,
+        reason: `Add Recommand credentials for the active ${environmentText}.`,
+      }
+    }
+
     return {
       method,
-      isReady: isEmailDeliveryReady(customer),
-      reason: isEmailDeliveryReady(customer) ? null : "Add a billing email before sending by email.",
+      isReady: true,
+      reason: null,
     }
   }
 

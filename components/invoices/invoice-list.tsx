@@ -28,6 +28,8 @@ const amountFormatter = new Intl.NumberFormat("nl-BE", {
 
 type InvoiceListProps = {
   invoices: InvoiceWithCustomer[]
+  hasRecommandCredentials?: boolean
+  recommandEnvironmentLabel?: string
 }
 
 type TabStatus = "all" | "draft" | "sent" | "overdue" | "paid"
@@ -107,7 +109,7 @@ function DueDateCell({ dueDate, status }: { dueDate: Date | null | undefined; st
   )
 }
 
-export function InvoiceList({ invoices }: InvoiceListProps) {
+export function InvoiceList({ invoices, hasRecommandCredentials, recommandEnvironmentLabel }: InvoiceListProps) {
   const [search, setSearch] = useState("")
   const [activeTab, setActiveTab] = useState<TabStatus>("all")
   const [selectedCustomer, setSelectedCustomer] = useState<string>("all")
@@ -167,7 +169,10 @@ export function InvoiceList({ invoices }: InvoiceListProps) {
 
     if (deliveryFilter !== "all") {
       result = result.filter((inv) => {
-        const readiness = getInvoiceDeliveryReadiness(inv)
+    const readiness = getInvoiceDeliveryReadiness(inv, {
+      hasRecommandCredentials,
+      environmentLabel: recommandEnvironmentLabel,
+    })
         if (deliveryFilter === "ready_to_send") return readiness.isReady
         if (deliveryFilter === "blocked") return !readiness.isReady
         if (deliveryFilter === "peppol_ready") return readiness.method === "peppol" && readiness.isReady
@@ -193,7 +198,12 @@ export function InvoiceList({ invoices }: InvoiceListProps) {
     })
 
     const draftInvoices = invoices.filter((invoice) => invoice.status === "draft")
-    const sendReadyDrafts = draftInvoices.filter((invoice) => getInvoiceDeliveryReadiness(invoice).isReady)
+    const sendReadyDrafts = draftInvoices.filter((invoice) =>
+      getInvoiceDeliveryReadiness(invoice, {
+        hasRecommandCredentials,
+        environmentLabel: recommandEnvironmentLabel,
+      }).isReady
+    )
     const blockedDrafts = draftInvoices.length - sendReadyDrafts.length
 
     return [
@@ -405,8 +415,22 @@ export function InvoiceList({ invoices }: InvoiceListProps) {
                     <td className="px-3 py-3 text-sm">
                       <div className="flex flex-col gap-0.5">
                         <span>{getInvoiceDeliveryMethodLabel(getInvoiceDeliveryMethod(invoice))}</span>
-                        <span className={`text-xs ${getInvoiceDeliveryReadiness(invoice).isReady ? "text-success" : "text-warning"}`}>
-                          {getInvoiceDeliveryReadiness(invoice).isReady ? "ready" : "blocked"}
+                        <span
+                          className={`text-xs ${
+                            getInvoiceDeliveryReadiness(invoice, {
+                              hasRecommandCredentials,
+                              environmentLabel: recommandEnvironmentLabel,
+                            }).isReady
+                              ? "text-success"
+                              : "text-warning"
+                          }`}
+                        >
+                          {getInvoiceDeliveryReadiness(invoice, {
+                            hasRecommandCredentials,
+                            environmentLabel: recommandEnvironmentLabel,
+                          }).isReady
+                            ? "ready"
+                            : "blocked"}
                         </span>
                       </div>
                     </td>

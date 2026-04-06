@@ -4,7 +4,6 @@ import { getCurrentUser } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import {
   getInvoiceDeliveryMethod,
-  normalizeCountryCode,
   normalizeInvoiceDeliveryMethod,
 } from "@/lib/invoice-delivery"
 import {
@@ -16,8 +15,14 @@ import { isAuthorRightsMode } from "@/lib/author-rights"
 import { generateInvoicePDF } from "@/lib/invoice-pdf/generate"
 import { InvoiceTemplate } from "@/lib/invoice-pdf/templates"
 import type { InvoiceFormData } from "@/lib/invoice-pdf/types"
-import { sendInvoiceViaRecommand, verifyPeppolRecipient } from "@/lib/recommand"
-import config from "@/lib/config"
+import { verifyPeppolRecipient, sendInvoiceEmailViaRecommand } from "@/lib/recommand"
+import { sendInvoiceViaPeppolForUser } from "@/lib/peppol-send"
+import { buildRecommandInvoicePayload, RecommandAttachment } from "@/lib/recommand-payload"
+import {
+  getActiveRecommandEnvironment,
+  getRecommandEnvironmentLabel,
+  hasConfiguredRecommandCredentials,
+} from "@/lib/recommand-settings"
 import {
   getDirectorySize,
   getUserUploadsDirectory,
@@ -39,14 +44,11 @@ import {
 import { recordPayment } from "@/models/payments"
 import { getSettings } from "@/models/settings"
 import { createTransaction, updateTransaction } from "@/models/transactions"
-import { InvoiceEmail } from "@/components/emails/invoice-email"
 import { Prisma, User } from "@/prisma/client"
 import { revalidatePath, revalidateTag } from "next/cache"
 import { randomUUID } from "crypto"
 import { mkdir, writeFile } from "fs/promises"
 import path from "path"
-import React from "react"
-import { Resend } from "resend"
 
 type InvoiceAppData = {
   templates: InvoiceTemplate[]
@@ -55,6 +57,13 @@ type InvoiceAppData = {
 type InvoiceActionResult<T = unknown> =
   | { success: true; data?: T }
   | { success: false; error: string; fieldErrors?: InvoiceFieldErrors }
+
+function flattenRecommandErrors(errors?: Record<string, string[]>): string {
+  if (!errors) return "Recommand rejected the invoice."
+  return Object.entries(errors)
+    .flatMap(([field, messages]) => messages.map((message) => `${field}: ${message}`))
+    .join(" ")
+}
 
 export async function addNewTemplateAction(user: User, template: InvoiceTemplate) {
   const appData = (await getAppData(user, "invoices")) as InvoiceAppData | null
@@ -311,65 +320,75 @@ export async function sendInvoiceEmailAction(invoiceId: string, recipientEmail: 
     return { success: false, error: validation.message, fieldErrors: validation.fieldErrors }
   }
 
+  const settings = await getSettings(user.id)
+  const activeEnvironment = getActiveRecommandEnvironment(settings)
+  if (!hasConfiguredRecommandCredentials(settings, activeEnvironment)) {
+    return {
+      success: false,
+      error: `Add Recommand credentials for the active ${getRecommandEnvironmentLabel(activeEnvironment)} environment.`,
+    }
+  }
+
   // Generate PDF from stored templateData
   const pdfBuffer = await generateInvoicePDF(templateData)
   const pdfBase64 = Buffer.from(pdfBuffer).toString("base64")
 
-  // Format display values for the email
-  const total = new Intl.NumberFormat("nl-BE", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
-    invoice.total / 100
-  )
-  const dueDate = invoice.dueDate
-    ? new Intl.DateTimeFormat("nl-BE", { day: "numeric", month: "long", year: "numeric" }).format(
-        new Date(invoice.dueDate)
-      )
-    : "–"
-  const businessName = user.businessName ?? user.name ?? "TaxHacker"
-  const bankDetails = templateData.bankDetails ?? undefined
-
-  const resend = new Resend(config.email.apiKey)
-
-  const { error } = await resend.emails.send({
-    from: config.email.from,
-    to: recipientEmail,
-    replyTo: config.email.from,
-    subject: `Factuur ${invoice.invoiceNumber} — ${businessName}`,
-    react: React.createElement(InvoiceEmail, {
-      businessName,
-      invoiceNumber: invoice.invoiceNumber,
-      invoiceTotal: total,
-      currency: invoice.currency,
-      dueDate,
-      bankDetails,
-      notes: invoice.notes ?? undefined,
-    }),
-    attachments: [
-      {
-        filename: `${invoice.invoiceNumber}.pdf`,
-        content: pdfBase64,
-      },
-    ],
-  })
-
-  if (error) {
-    return { success: false, error: `Email sending failed: ${error.message || JSON.stringify(error)}` }
-  }
-
-  await prisma.invoice.update({
-    where: { id: invoiceId, userId: user.id },
-    data: {
-      status: "sent",
-      deliveryMethod: "email_pdf",
-      deliveryStatus: "sent",
-      deliverySentAt: new Date(),
-      providerReferenceId: null,
-      providerError: null,
+  const attachments: RecommandAttachment[] = [
+    {
+      id: "INV-PDF",
+      documentType: "130",
+      mimeCode: "application/pdf",
+      filename: `${invoice.invoiceNumber}.pdf`,
+      embeddedDocument: pdfBase64,
     },
-  })
+  ]
 
-  revalidatePath(`/invoices/${invoiceId}`)
-  revalidatePath("/invoices")
-  return { success: true }
+  const payload = buildRecommandInvoicePayload(user, settings, invoice, attachments)
+
+  try {
+    const result = await sendInvoiceEmailViaRecommand(settings, [recipientEmail], payload)
+
+    if (!result.success) {
+      const providerError = flattenRecommandErrors(result.errors)
+      await prisma.invoice.update({
+        where: { id: invoiceId, userId: user.id },
+        data: {
+          deliveryMethod: "email_pdf",
+          deliveryStatus: "failed",
+          providerError,
+        },
+      })
+      revalidateInvoiceDeliveryPaths(invoiceId)
+      return { success: false, error: providerError }
+    }
+
+    await prisma.invoice.update({
+      where: { id: invoiceId, userId: user.id },
+      data: {
+        status: "sent",
+        deliveryMethod: "email_pdf",
+        deliveryStatus: "sent",
+        deliverySentAt: new Date(),
+        providerReferenceId: result.id ?? null,
+        providerError: null,
+      },
+    })
+
+    revalidateInvoiceDeliveryPaths(invoiceId)
+    return { success: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Email sending failed."
+    await prisma.invoice.update({
+      where: { id: invoiceId, userId: user.id },
+      data: {
+        deliveryMethod: "email_pdf",
+        deliveryStatus: "failed",
+        providerError: message,
+      },
+    })
+    revalidateInvoiceDeliveryPaths(invoiceId)
+    return { success: false, error: message }
+  }
 }
 
 export async function setInvoiceDeliveryMethodAction(
@@ -504,113 +523,14 @@ export async function verifyInvoicePeppolRecipientAction(invoiceId: string): Pro
 
 export async function sendInvoicePeppolAction(invoiceId: string): Promise<InvoiceActionResult> {
   const user = await getCurrentUser()
-  const settings = await getSettings(user.id)
-  const invoice = await prisma.invoice.findFirst({
-    where: { id: invoiceId, userId: user.id },
-    include: { customer: true },
-  })
+  const result = await sendInvoiceViaPeppolForUser(user.id, invoiceId)
+  revalidateInvoiceDeliveryPaths(invoiceId)
 
-  if (!invoice) {
-    return { success: false, error: "Invoice not found" }
+  if (!result.success) {
+    return result
   }
 
-  if (invoice.status === "draft") {
-    return { success: false, error: "Save the invoice as sent before sending it via PEPPOL." }
-  }
-
-  if (isAuthorRightsMode(invoice.invoiceMode)) {
-    return { success: false, error: "Author-rights invoices are currently supported with Email + PDF only." }
-  }
-
-  if (getInvoiceDeliveryMethod(invoice) !== "peppol") {
-    return { success: false, error: "This invoice is not using PEPPOL delivery." }
-  }
-
-  const validation = validateInvoiceForPeppolDelivery({
-    businessName: user.businessName,
-    businessAddress: user.businessAddress,
-    businessBankDetails: user.businessBankDetails,
-    customer: invoice.customer,
-    invoiceNumber: invoice.invoiceNumber,
-    issuedAt: invoice.issuedAt,
-    dueDate: invoice.dueDate,
-    currency: invoice.currency,
-    items: invoice.items,
-    templateData: (invoice.templateData as unknown as InvoiceFormData | undefined) ?? null,
-    settings,
-  })
-
-  if (validation.message) {
-    return { success: false, error: validation.message, fieldErrors: validation.fieldErrors }
-  }
-
-  try {
-    const verification = await verifyPeppolRecipient(
-      settings,
-      invoice.customer.peppolId ?? "",
-      invoice.customer.country
-    )
-
-    if (!verification.isValid) {
-      await prisma.invoice.update({
-        where: { id: invoice.id, userId: user.id },
-        data: {
-          deliveryMethod: "peppol",
-          deliveryStatus: "failed",
-          providerError: verification.message ?? "Recipient is not registered in the PEPPOL network.",
-        },
-      })
-      revalidateInvoiceDeliveryPaths(invoice.id)
-      return { success: false, error: verification.message ?? "Recipient is not registered in the PEPPOL network." }
-    }
-
-    const payload = buildRecommandInvoicePayload(user, settings, invoice)
-    const result = await sendInvoiceViaRecommand(
-      settings,
-      validation.normalizedPeppolAddress ?? invoice.customer.peppolId ?? "",
-      invoice.customer.country,
-      payload
-    )
-
-    if (!result.success) {
-      const providerError = flattenProviderErrors(result.errors)
-      await prisma.invoice.update({
-        where: { id: invoice.id, userId: user.id },
-        data: {
-          deliveryMethod: "peppol",
-          deliveryStatus: "failed",
-          providerError,
-        },
-      })
-      revalidateInvoiceDeliveryPaths(invoice.id)
-      return { success: false, error: providerError }
-    }
-
-    await prisma.invoice.update({
-      where: { id: invoice.id, userId: user.id },
-      data: {
-        deliveryMethod: "peppol",
-        deliveryStatus: "sent",
-        deliverySentAt: new Date(),
-        providerReferenceId: result.id ?? validation.normalizedPeppolAddress,
-        providerError: null,
-      },
-    })
-    revalidateInvoiceDeliveryPaths(invoice.id)
-    return { success: true, data: { providerReferenceId: result.id } }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "PEPPOL send failed."
-    await prisma.invoice.update({
-      where: { id: invoice.id, userId: user.id },
-      data: {
-        deliveryMethod: "peppol",
-        deliveryStatus: "failed",
-        providerError: message,
-      },
-    })
-    revalidateInvoiceDeliveryPaths(invoice.id)
-    return { success: false, error: message }
-  }
+  return { success: true, data: { providerReferenceId: result.providerReferenceId } }
 }
 
 export async function downloadInvoicePDFAction(invoiceId: string): Promise<{ base64: string; filename: string }> {
@@ -799,98 +719,6 @@ async function validateInvoiceDraftOrSent(
   }
 
   return { success: true }
-}
-
-function formatDateForApi(date: Date | string | null | undefined): string | undefined {
-  if (!date) return undefined
-  const value = date instanceof Date ? date : new Date(date)
-  return Number.isNaN(value.getTime()) ? undefined : value.toISOString().slice(0, 10)
-}
-
-function extractIban(value?: string | null): string | null {
-  if (!value) return null
-  const compact = value.toUpperCase().replace(/\s+/g, "")
-  const match = compact.match(/[A-Z]{2}[0-9A-Z]{13,32}/)
-  return match?.[0] ?? null
-}
-
-function flattenProviderErrors(errors?: Record<string, string[]>): string {
-  if (!errors) return "Recommand rejected the invoice."
-  return Object.entries(errors)
-    .flatMap(([field, messages]) => messages.map((message) => `${field}: ${message}`))
-    .join(" ")
-}
-
-function getPeppolVatCategory(invoice: Prisma.InvoiceGetPayload<{ include: { customer: true } }>, taxRate: number) {
-  if (invoice.isVatReversed) {
-    return { category: "AE", percentage: "0.00" }
-  }
-
-  if (taxRate <= 0) {
-    return { category: "Z", percentage: "0.00" }
-  }
-
-  return { category: "S", percentage: taxRate.toFixed(2) }
-}
-
-function buildRecommandInvoicePayload(
-  user: User,
-  settings: Record<string, string>,
-  invoice: Prisma.InvoiceGetPayload<{ include: { customer: true } }>
-) {
-  const items = Array.isArray(invoice.items) ? invoice.items : []
-  const taxes = Array.isArray(invoice.taxes) ? invoice.taxes : []
-  const taxRate =
-    invoice.isVatReversed
-      ? 0
-      : typeof taxes[0] === "object" &&
-          taxes[0] !== null &&
-          "rate" in taxes[0] &&
-          typeof taxes[0].rate === "number"
-        ? taxes[0].rate
-        : invoice.subtotal > 0
-          ? Number(((invoice.taxTotal / invoice.subtotal) * 100).toFixed(2))
-          : 0
-  const vat = getPeppolVatCategory(invoice, taxRate)
-
-  const lines = items
-    .filter((item): item is { name?: string; subtitle?: string; quantity?: number; unitPrice?: number; subtotal?: number } => {
-      return typeof item === "object" && item !== null
-    })
-    .map((item, index) => ({
-      name: item.name?.trim() || `Line ${index + 1}`,
-      description: item.subtitle?.trim() || undefined,
-      sellersId: `${invoice.invoiceNumber}-${index + 1}`,
-      quantity: Number(item.quantity ?? 1).toFixed(2),
-      unitCode: "C62",
-      netPriceAmount: Number(item.unitPrice ?? 0).toFixed(2),
-      vat,
-    }))
-
-  return {
-    invoiceNumber: invoice.invoiceNumber,
-    issueDate: formatDateForApi(invoice.issuedAt),
-    dueDate: formatDateForApi(invoice.dueDate),
-    note: invoice.notes ?? undefined,
-    buyerReference: invoice.poNumber ?? invoice.paymentReference ?? undefined,
-    buyer: {
-      vatNumber: invoice.customer.vatNumber,
-      name: invoice.customer.name,
-      street: invoice.customer.street,
-      city: invoice.customer.city,
-      postalZone: invoice.customer.zipCode,
-      country: normalizeCountryCode(invoice.customer.country),
-    },
-    paymentMeans: [
-      {
-        paymentMethod: "credit_transfer",
-        reference: invoice.paymentReference || invoice.invoiceNumber,
-        iban: extractIban(settings.business_iban || user.businessBankDetails),
-      },
-    ],
-    paymentTerms: invoice.paymentTerms ? { note: invoice.paymentTerms } : undefined,
-    lines,
-  }
 }
 
 function revalidateInvoiceDeliveryPaths(invoiceId: string) {

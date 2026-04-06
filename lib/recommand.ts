@@ -119,3 +119,29 @@ export async function sendInvoiceViaRecommand(
 
   return parseResponse<RecommandSendResult>(response)
 }
+
+export async function sendInvoiceEmailViaRecommand(
+  settings: SettingsMap,
+  emailRecipients: string[],
+  document: unknown
+): Promise<RecommandSendResult> {
+  const { companyId } = getCredentials(settings)
+  const response = await fetch(`${RECOMMAND_BASE_URL}/${companyId}/send`, {
+    method: "POST",
+    headers: {
+      Authorization: getAuthorizationHeader(settings),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      recipient: null,
+      documentType: "invoice",
+      document,
+      email: {
+        when: "always",
+        to: emailRecipients,
+      },
+    }),
+  })
+
+  return parseResponse<RecommandSendResult>(response)
+}

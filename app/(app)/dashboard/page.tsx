@@ -10,7 +10,11 @@ import { PageShell } from "@/components/ui/page-shell"
 import { getCurrentUser } from "@/lib/auth"
 import config from "@/lib/config"
 import { getInvoiceDeliveryMethod, getInvoiceDeliveryReadiness, getPeppolBusinessReadiness } from "@/lib/invoice-delivery"
-import { getActiveRecommandEnvironment, hasConfiguredRecommandCredentials } from "@/lib/recommand-settings"
+import {
+  getActiveRecommandEnvironment,
+  getRecommandEnvironmentLabel,
+  hasConfiguredRecommandCredentials,
+} from "@/lib/recommand-settings"
 import { getUnsortedFiles, getUnsortedFilesCount } from "@/models/files"
 import { getInvoices } from "@/models/invoices"
 import { getSettings } from "@/models/settings"
@@ -33,6 +37,9 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     getInvoices(user.id),
     getExpenses(user.id),
   ])
+  const activePeppolEnvironment = getActiveRecommandEnvironment(settings)
+  const activePeppolReady = hasConfiguredRecommandCredentials(settings, activePeppolEnvironment)
+  const activePeppolLabel = getRecommandEnvironmentLabel(activePeppolEnvironment)
   const peppolSenderMissing = Object.keys(
     getPeppolBusinessReadiness(
       {
@@ -44,14 +51,15 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   ).length > 0
   const blockedInvoices = invoices.filter((invoice) => {
     if (["paid", "cancelled"].includes(invoice.status)) return false
-    const readiness = getInvoiceDeliveryReadiness(invoice)
+    const readiness = getInvoiceDeliveryReadiness(invoice, {
+      hasRecommandCredentials: activePeppolReady,
+      environmentLabel: activePeppolLabel,
+    })
     if (!readiness.isReady) return true
     return getInvoiceDeliveryMethod(invoice) === "peppol" && peppolSenderMissing
   }).length
   const overdueInvoices = invoices.filter((invoice) => invoice.status === "overdue").length
   const expensesToPay = expenses.filter((expense) => expense.status === "to_pay" || expense.status === "overdue").length
-  const activePeppolEnvironment = getActiveRecommandEnvironment(settings)
-  const activePeppolReady = hasConfiguredRecommandCredentials(settings, activePeppolEnvironment)
   const productionPeppolReady = hasConfiguredRecommandCredentials(settings, "production")
 
   return (
