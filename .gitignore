@@ -61,3 +61,6 @@ pgdata
 *.db-journal
 # Sentry Config File
 .env.sentry-build-plugin
+
+# Favicon disk cache
+.favicon-cache

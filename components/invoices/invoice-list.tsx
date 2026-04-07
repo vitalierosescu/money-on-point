@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react"
 import Link from "next/link"
+import { CustomerAvatar } from "@/components/customers/customer-avatar"
 import { InvoiceStatusBadge } from "@/components/invoices/invoice-status-badge"
 import { InvoiceDrawer } from "@/components/invoices/invoice-drawer"
 import {
@@ -69,13 +70,6 @@ function formatCurrencyTotals(
     .join(" · ")
 }
 
-function CustomerAvatar({ name }: { name: string }) {
-  return (
-    <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-muted-foreground text-[10px] font-semibold shrink-0">
-      {name.charAt(0).toUpperCase()}
-    </div>
-  )
-}
 
 function DueDateCell({
   dueDate,
@@ -482,7 +476,10 @@ export function InvoiceList({
                     </td>
                     <td className="px-3 py-3">
                       <div className="flex items-center gap-2">
-                        <CustomerAvatar name={invoice.customer?.name ?? "?"} />
+                        <CustomerAvatar
+                          name={invoice.customer?.name ?? "?"}
+                          website={invoice.customer?.website}
+                        />
                         <span className="font-medium truncate max-w-[200px]">
                           {invoice.customer?.name ?? "—"}
                         </span>

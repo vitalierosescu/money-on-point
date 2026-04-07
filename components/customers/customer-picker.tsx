@@ -11,6 +11,7 @@ import {
   lookupRecommandByVatAction,
   verifyRecommandRecipientAction,
 } from "@/app/(app)/customers/actions"
+import { CustomerAvatar } from "@/components/customers/customer-avatar"
 import { CustomerEditPanel } from "@/components/customers/customer-edit-panel"
 
 type DirectoryHit = {
@@ -200,11 +201,18 @@ export function CustomerPicker({ customers, selectedCustomer, onSelect }: Custom
   if (selectedCustomer) {
     return (
       <div className="flex items-center justify-between p-3 border rounded-lg">
-        <div>
-          <p className="font-medium">{selectedCustomer.name}</p>
-          {selectedCustomer.email && (
-            <p className="text-sm text-muted-foreground">{selectedCustomer.email}</p>
-          )}
+        <div className="flex items-center gap-3">
+          <CustomerAvatar
+            name={selectedCustomer.name}
+            website={selectedCustomer.website}
+            size="md"
+          />
+          <div>
+            <p className="font-medium">{selectedCustomer.name}</p>
+            {selectedCustomer.email && (
+              <p className="text-sm text-muted-foreground">{selectedCustomer.email}</p>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <CustomerEditPanel
@@ -273,13 +281,16 @@ export function CustomerPicker({ customers, selectedCustomer, onSelect }: Custom
                 <button
                   key={customer.id}
                   type="button"
-                  className="w-full text-left p-3 hover:bg-muted border-b last:border-0"
+                  className="w-full text-left p-3 hover:bg-muted border-b last:border-0 flex items-center gap-3"
                   onClick={() => onSelect(customer)}
                 >
-                  <p className="font-medium">{customer.name}</p>
-                  {customer.email && (
-                    <p className="text-xs text-muted-foreground">{customer.email}</p>
-                  )}
+                  <CustomerAvatar name={customer.name} website={customer.website} size="md" />
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{customer.name}</p>
+                    {customer.email && (
+                      <p className="text-xs text-muted-foreground truncate">{customer.email}</p>
+                    )}
+                  </div>
                 </button>
               ))
             )}
@@ -323,9 +334,7 @@ export function CustomerPicker({ customers, selectedCustomer, onSelect }: Custom
                       onClick={() => handleSelectHit(hit)}
                       className="w-full text-left p-3 hover:bg-muted disabled:opacity-50 flex items-start gap-3"
                     >
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold">
-                        {hit.name.charAt(0).toUpperCase()}
-                      </div>
+                      <CustomerAvatar name={hit.name} website={null} size="md" />
                       <div className="flex-1 min-w-0">
                         <p className="font-medium truncate">{hit.name}</p>
                         <p className="text-xs text-muted-foreground truncate">

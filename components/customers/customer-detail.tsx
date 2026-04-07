@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import Link from "next/link"
 import { ArrowRight, Pencil, Plus } from "lucide-react"
 import { Customer, Invoice } from "@/prisma/client"
+import { CustomerAvatar } from "@/components/customers/customer-avatar"
 import { CustomerEditPanel } from "@/components/customers/customer-edit-panel"
 import { InvoiceStatusBadge } from "@/components/invoices/invoice-status-badge"
 import { Button } from "@/components/ui/button"
@@ -107,9 +108,12 @@ export function CustomerDetail({
   return (
     <div className="max-w-5xl">
       <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">{customer.name}</h2>
-          {customer.email && <p className="mt-1 text-muted-foreground">{customer.email}</p>}
+        <div className="flex items-center gap-4">
+          <CustomerAvatar name={customer.name} website={customer.website} size="lg" />
+          <div>
+            <h2 className="text-3xl font-bold tracking-tight">{customer.name}</h2>
+            {customer.email && <p className="mt-1 text-muted-foreground">{customer.email}</p>}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <CustomerEditPanel
