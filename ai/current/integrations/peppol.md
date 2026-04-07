@@ -3,7 +3,7 @@
 ## Status
 
 - Outbound PEPPOL sending is supported
-- Non-PEPPOL `Email + PDF` remains available
+- Non-PEPPOL `Email + PDF` remains available through Resend
 - Inbound PEPPOL sync is not implemented
 
 ## Environments
@@ -16,6 +16,7 @@
 - Configure production credentials in Business Settings before live sending
 - Switch the active PEPPOL environment to `Production` for real invoices
 - Keep Playground configured for regression testing
+- Recommand is PEPPOL-only in the current app; direct invoice emails are sent through Resend
 
 ## Current Limit
 

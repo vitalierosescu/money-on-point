@@ -53,6 +53,7 @@ export default async function InvoicesPage({
         locale={locale}
         hasRecommandCredentials={hasRecommandCredentials}
         recommandEnvironmentLabel={recommandEnvironmentLabel}
+        sellerCountryCode={settings.business_country_code}
       />
     </>
   )

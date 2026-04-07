@@ -13,10 +13,22 @@ export const CUSTOMER_INVOICE_DELIVERY_METHODS = [
 
 export const INVOICE_DELIVERY_METHODS = ["peppol", "email_pdf"] as const
 export const INVOICE_DELIVERY_STATUSES = ["not_sent", "verified", "sent", "failed"] as const
+export const EMAIL_COPY_STATUSES = ["not_sent", "sent", "failed"] as const
+export const DELIVERY_EXCEPTION_CODES = ["customer_not_peppol_ready"] as const
 
 export type CustomerInvoiceDeliveryMethod = (typeof CUSTOMER_INVOICE_DELIVERY_METHODS)[number]
 export type InvoiceDeliveryMethod = (typeof INVOICE_DELIVERY_METHODS)[number]
 export type InvoiceDeliveryStatus = (typeof INVOICE_DELIVERY_STATUSES)[number]
+export type EmailCopyStatus = (typeof EMAIL_COPY_STATUSES)[number]
+export type DeliveryExceptionCode = (typeof DELIVERY_EXCEPTION_CODES)[number]
+export type InvoiceDeliveryComplianceReasonCode =
+  | "seller_not_belgian"
+  | "foreign_customer"
+  | "missing_customer_country"
+  | "missing_customer_vat_number"
+  | "belgian_domestic_b2b"
+  | "customer_not_peppol_ready"
+  | "author_rights_peppol_unsupported"
 
 type DeliveryCustomerLike = {
   name?: string | null
@@ -33,6 +45,9 @@ type DeliveryCustomerLike = {
 
 type DeliveryInvoiceLike = {
   deliveryMethod?: string | null
+  deliveryStatus?: string | null
+  deliveryExceptionCode?: string | null
+  invoiceMode?: string | null
   customer?: DeliveryCustomerLike | null
 }
 
@@ -44,6 +59,18 @@ type DeliveryUserLike = {
 type DeliveryReadinessContext = {
   hasRecommandCredentials?: boolean
   environmentLabel?: string
+  sellerCountryCode?: string | null
+}
+
+export type InvoiceDeliveryComplianceResult = {
+  sellerCountryCode: string
+  customerCountryCode: string | null
+  scopeKnown: boolean
+  requiresStructuredInvoice: boolean
+  defaultMethod: InvoiceDeliveryMethod
+  allowEmailFallback: boolean
+  reasonCode: InvoiceDeliveryComplianceReasonCode
+  message: string | null
 }
 
 function isBlank(value: string | null | undefined) {
@@ -73,6 +100,20 @@ export function normalizeInvoiceDeliveryStatus(value?: string | null): InvoiceDe
   return "not_sent"
 }
 
+export function normalizeEmailCopyStatus(value?: string | null): EmailCopyStatus {
+  if (value === "sent" || value === "failed" || value === "not_sent") {
+    return value
+  }
+  return "not_sent"
+}
+
+export function normalizeDeliveryExceptionCode(value?: string | null): DeliveryExceptionCode | null {
+  if (value === "customer_not_peppol_ready") {
+    return value
+  }
+  return null
+}
+
 export function getCustomerBillingEmails(customer?: DeliveryCustomerLike | null): string[] {
   const billingEmails = Array.isArray(customer?.billingEmails)
     ? customer.billingEmails.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
@@ -85,6 +126,19 @@ export function getCustomerBillingEmails(customer?: DeliveryCustomerLike | null)
   return billingEmails
 }
 
+export function parseEmailRecipients(value: string | string[] | null | undefined): string[] {
+  const rawValues = Array.isArray(value) ? value : [value ?? ""]
+
+  return Array.from(
+    new Set(
+      rawValues
+        .flatMap((entry) => String(entry).split(/[\n,;]+/))
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0)
+    )
+  )
+}
+
 export function getDefaultInvoiceDeliveryMethod(customer?: DeliveryCustomerLike | null): InvoiceDeliveryMethod {
   const preference = normalizeCustomerInvoiceDeliveryMethod(customer?.invoiceDeliveryMethod)
 
@@ -93,6 +147,112 @@ export function getDefaultInvoiceDeliveryMethod(customer?: DeliveryCustomerLike 
   }
 
   return isBlank(customer?.peppolId) ? "email_pdf" : "peppol"
+}
+
+export function classifyInvoiceDeliveryRequirement(input: {
+  sellerCountry?: string | null
+  customerCountry?: string | null
+  customerVatNumber?: string | null
+  customerPeppolId?: string | null
+  customerDeliveryPreference?: string | null
+  invoiceMode?: string | null
+  peppolVerificationPassed?: boolean | null
+}): InvoiceDeliveryComplianceResult {
+  const sellerCountryCode = normalizeCountryCode(input.sellerCountry)
+  const customerCountryCode = input.customerCountry ? normalizeCountryCode(input.customerCountry) : null
+  const defaultMethod = getDefaultInvoiceDeliveryMethod({
+    peppolId: input.customerPeppolId,
+    invoiceDeliveryMethod: input.customerDeliveryPreference,
+  })
+
+  if (sellerCountryCode !== "BE") {
+    return {
+      sellerCountryCode,
+      customerCountryCode,
+      scopeKnown: true,
+      requiresStructuredInvoice: false,
+      defaultMethod,
+      allowEmailFallback: true,
+      reasonCode: "seller_not_belgian",
+      message: null,
+    }
+  }
+
+  if (!customerCountryCode) {
+    return {
+      sellerCountryCode,
+      customerCountryCode,
+      scopeKnown: false,
+      requiresStructuredInvoice: false,
+      defaultMethod: "email_pdf",
+      allowEmailFallback: false,
+      reasonCode: "missing_customer_country",
+      message: "Add the customer's country before sending this invoice.",
+    }
+  }
+
+  if (customerCountryCode !== "BE") {
+    return {
+      sellerCountryCode,
+      customerCountryCode,
+      scopeKnown: true,
+      requiresStructuredInvoice: false,
+      defaultMethod: "email_pdf",
+      allowEmailFallback: true,
+      reasonCode: "foreign_customer",
+      message: null,
+    }
+  }
+
+  if (isBlank(input.customerVatNumber)) {
+    return {
+      sellerCountryCode,
+      customerCountryCode,
+      scopeKnown: false,
+      requiresStructuredInvoice: false,
+      defaultMethod: "email_pdf",
+      allowEmailFallback: false,
+      reasonCode: "missing_customer_vat_number",
+      message: "Add the customer's VAT number before sending this Belgian invoice.",
+    }
+  }
+
+  if (input.peppolVerificationPassed === false) {
+    return {
+      sellerCountryCode,
+      customerCountryCode,
+      scopeKnown: true,
+      requiresStructuredInvoice: true,
+      defaultMethod: "email_pdf",
+      allowEmailFallback: true,
+      reasonCode: "customer_not_peppol_ready",
+      message: "Recipient is not PEPPOL-ready, so email fallback is allowed for this invoice.",
+    }
+  }
+
+  if (input.invoiceMode === "author_rights") {
+    return {
+      sellerCountryCode,
+      customerCountryCode,
+      scopeKnown: true,
+      requiresStructuredInvoice: true,
+      defaultMethod: "email_pdf",
+      allowEmailFallback: false,
+      reasonCode: "author_rights_peppol_unsupported",
+      message: "Belgian B2B author-rights invoices cannot be sent yet because PEPPOL support for that invoice mode is not implemented.",
+    }
+  }
+
+  return {
+    sellerCountryCode,
+    customerCountryCode,
+    scopeKnown: true,
+    requiresStructuredInvoice: true,
+    defaultMethod: "peppol",
+    allowEmailFallback: false,
+    reasonCode: "belgian_domestic_b2b",
+    message: "Belgian domestic B2B invoices must be issued via PEPPOL.",
+  }
 }
 
 export function getInvoiceDeliveryMethod(invoice?: DeliveryInvoiceLike | null): InvoiceDeliveryMethod {
@@ -138,10 +298,33 @@ export function getInvoiceDeliveryReadiness(
 } {
   const method = getInvoiceDeliveryMethod(invoice)
   const customer = invoice?.customer
+  const peppolVerificationPassed =
+    normalizeDeliveryExceptionCode(invoice?.deliveryExceptionCode) === "customer_not_peppol_ready"
+      ? false
+      : normalizeInvoiceDeliveryStatus(invoice?.deliveryStatus) === "verified" ||
+          (method === "peppol" && normalizeInvoiceDeliveryStatus(invoice?.deliveryStatus) === "sent")
+        ? true
+        : null
+  const compliance = classifyInvoiceDeliveryRequirement({
+    sellerCountry: context?.sellerCountryCode,
+    customerCountry: customer?.country,
+    customerVatNumber: customer?.vatNumber,
+    customerPeppolId: customer?.peppolId,
+    customerDeliveryPreference: customer?.invoiceDeliveryMethod,
+    invoiceMode: invoice?.invoiceMode,
+    peppolVerificationPassed,
+  })
+
+  if (!compliance.scopeKnown) {
+    return {
+      method,
+      isReady: false,
+      reason: compliance.message,
+    }
+  }
 
   if (method === "email_pdf") {
     const emailReady = isEmailDeliveryReady(customer)
-    const hasRecommand = context?.hasRecommandCredentials ?? true
 
     if (!emailReady) {
       return {
@@ -151,12 +334,11 @@ export function getInvoiceDeliveryReadiness(
       }
     }
 
-    if (!hasRecommand) {
-      const environmentText = context?.environmentLabel ? `${context.environmentLabel} environment` : "environment"
+    if (compliance.requiresStructuredInvoice && !compliance.allowEmailFallback) {
       return {
         method,
         isReady: false,
-        reason: `Add Recommand credentials for the active ${environmentText}.`,
+        reason: compliance.message,
       }
     }
 
@@ -164,6 +346,24 @@ export function getInvoiceDeliveryReadiness(
       method,
       isReady: true,
       reason: null,
+    }
+  }
+
+  if (compliance.allowEmailFallback && compliance.reasonCode === "customer_not_peppol_ready") {
+    return {
+      method,
+      isReady: false,
+      reason: compliance.message,
+    }
+  }
+
+  const hasRecommand = context?.hasRecommandCredentials ?? true
+  if (!hasRecommand) {
+    const environmentText = context?.environmentLabel ? `${context.environmentLabel} environment` : "environment"
+    return {
+      method,
+      isReady: false,
+      reason: `Add Recommand credentials for the active ${environmentText}.`,
     }
   }
 

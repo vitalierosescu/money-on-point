@@ -27,3 +27,43 @@ export async function sendNewsletterWelcomeEmail(email: string) {
     react: html,
   })
 }
+
+export async function sendInvoicePdfEmail(input: {
+  to: string[]
+  invoiceNumber: string
+  businessName: string
+  customerName?: string | null
+  pdfFilename: string
+  pdfContent: Buffer
+  isCourtesyCopy?: boolean
+}) {
+  const subjectPrefix = input.isCourtesyCopy ? "Invoice copy" : "Invoice"
+  const subject = `${subjectPrefix} ${input.invoiceNumber} from ${input.businessName}`
+  const greetingName = input.customerName?.trim() || "there"
+  const intro = input.isCourtesyCopy
+    ? `A courtesy copy of invoice ${input.invoiceNumber} is attached as a PDF.`
+    : `Invoice ${input.invoiceNumber} is attached as a PDF.`
+  const html = `
+    <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111827">
+      <p>Hello ${greetingName},</p>
+      <p>${intro}</p>
+      <p>Regards,<br />${input.businessName}</p>
+    </div>
+  `
+  const text = `Hello ${greetingName},\n\n${intro}\n\nRegards,\n${input.businessName}`
+
+  return await resend.emails.send({
+    from: config.email.from,
+    to: input.to,
+    subject,
+    html,
+    text,
+    attachments: [
+      {
+        filename: input.pdfFilename,
+        content: input.pdfContent,
+        contentType: "application/pdf",
+      },
+    ],
+  })
+}

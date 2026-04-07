@@ -51,7 +51,7 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
   const attachedFiles = Array.isArray(invoice.transaction?.files) ? (invoice.transaction?.files as string[]) : []
   const deliveryMethod = getInvoiceDeliveryMethod(invoice)
   const deliveryStatus = normalizeInvoiceDeliveryStatus(invoice.deliveryStatus)
-  const defaultBillingEmail = getCustomerBillingEmails(invoice.customer)[0] ?? ""
+  const defaultBillingRecipients = getCustomerBillingEmails(invoice.customer)
 
   function run(action: () => Promise<unknown>) {
     startTransition(async () => {
@@ -212,7 +212,7 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
                   <SendInvoiceDialog
                     invoiceId={invoice.id}
                     invoiceNumber={invoice.invoiceNumber}
-                    defaultEmail={defaultBillingEmail}
+                    defaultRecipients={defaultBillingRecipients}
                     trigger={
                       <Button variant="default" className="w-full" disabled={isPending}>
                         <Send className="mr-2 h-4 w-4" />

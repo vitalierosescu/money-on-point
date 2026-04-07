@@ -15,27 +15,57 @@ import {
   verifyInvoicePeppolRecipientAction,
 } from "@/app/(app)/invoices/actions"
 import {
+  classifyInvoiceDeliveryRequirement,
   getCustomerBillingEmails,
   getInvoiceDeliveryMethod,
   getInvoiceDeliveryMethodLabel,
   getInvoiceDeliveryStatusLabel,
+  normalizeDeliveryExceptionCode,
+  normalizeEmailCopyStatus,
   normalizeInvoiceDeliveryStatus,
 } from "@/lib/invoice-delivery"
 import { isAuthorRightsMode } from "@/lib/author-rights"
 import { InvoiceWithCustomer } from "@/models/invoices"
 import Link from "next/link"
 
-export function InvoiceActions({ invoice }: { invoice: InvoiceWithCustomer }) {
+export function InvoiceActions({
+  invoice,
+  sellerCountryCode,
+}: {
+  invoice: InvoiceWithCustomer
+  sellerCountryCode?: string | null
+}) {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
 
   const deliveryMethod = getInvoiceDeliveryMethod(invoice)
   const deliveryStatus = normalizeInvoiceDeliveryStatus(invoice.deliveryStatus)
-  const defaultBillingEmail = getCustomerBillingEmails(invoice.customer)[0] ?? ""
+  const defaultBillingRecipients = getCustomerBillingEmails(invoice.customer)
   const isDeliveryLocked = deliveryStatus === "sent" || invoice.status === "paid" || invoice.status === "cancelled"
   const peppolWasDelivered = deliveryMethod === "peppol" && deliveryStatus === "sent"
   const isAuthorRightsInvoice = isAuthorRightsMode(invoice.invoiceMode)
+  const emailCopyStatus = normalizeEmailCopyStatus(invoice.emailCopyStatus)
+  const peppolVerificationPassed =
+    normalizeDeliveryExceptionCode(invoice.deliveryExceptionCode) === "customer_not_peppol_ready"
+      ? false
+      : deliveryStatus === "verified" || peppolWasDelivered
+        ? true
+        : null
+  const compliance = classifyInvoiceDeliveryRequirement({
+    sellerCountry: sellerCountryCode,
+    customerCountry: invoice.customer.country,
+    customerVatNumber: invoice.customer.vatNumber,
+    customerPeppolId: invoice.customer.peppolId,
+    customerDeliveryPreference: invoice.customer.invoiceDeliveryMethod,
+    invoiceMode: invoice.invoiceMode,
+    peppolVerificationPassed,
+  })
+  const emailSwitchBlocked =
+    !compliance.scopeKnown || (compliance.requiresStructuredInvoice && !compliance.allowEmailFallback)
+  const emailSendBlocked =
+    deliveryMethod === "email_pdf" &&
+    (!compliance.scopeKnown || (compliance.requiresStructuredInvoice && !compliance.allowEmailFallback))
 
   const run = async (action: () => Promise<unknown>) => {
     setIsLoading(true)
@@ -78,7 +108,7 @@ export function InvoiceActions({ invoice }: { invoice: InvoiceWithCustomer }) {
         <Button
           variant={deliveryMethod === "email_pdf" ? "default" : "outline"}
           size="sm"
-          disabled={isLoading || isDeliveryLocked}
+          disabled={isLoading || isDeliveryLocked || (deliveryMethod !== "email_pdf" && emailSwitchBlocked)}
           onClick={() => run(() => setInvoiceDeliveryMethodAction(invoice.id, "email_pdf"))}
         >
           <Mail className="mr-2 h-4 w-4" />
@@ -99,8 +129,19 @@ export function InvoiceActions({ invoice }: { invoice: InvoiceWithCustomer }) {
           Auteursrechtenfacturen blijven in v1 beperkt tot Email + PDF.
         </p>
       )}
+      {emailSwitchBlocked && deliveryMethod !== "peppol" && compliance.message && (
+        <p className="mt-2 text-xs text-amber-700">{compliance.message}</p>
+      )}
+      {compliance.allowEmailFallback && invoice.deliveryExceptionNote && (
+        <p className="mt-2 text-xs text-amber-700">{invoice.deliveryExceptionNote}</p>
+      )}
       {invoice.providerReferenceId && (
         <p className="mt-2 text-xs text-muted-foreground">Provider ref: {invoice.providerReferenceId}</p>
+      )}
+      {invoice.emailCopySentAt && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Courtesy copy: {emailCopyStatus} on {new Date(invoice.emailCopySentAt).toLocaleDateString("nl-BE")}
+        </p>
       )}
       {invoice.providerError && <p className="mt-2 text-xs text-destructive">{invoice.providerError}</p>}
       {peppolWasDelivered && (
@@ -119,15 +160,17 @@ export function InvoiceActions({ invoice }: { invoice: InvoiceWithCustomer }) {
           <Link href={`/invoices/${invoice.id}/edit`}>
             <Button variant="outline" className="w-full">Edit</Button>
           </Link>
-          {deliveryMethod === "email_pdf" ? (
+          {deliveryMethod === "email_pdf" && !emailSendBlocked ? (
             <SendInvoiceDialog
               invoiceId={invoice.id}
               invoiceNumber={invoice.invoiceNumber}
-              defaultEmail={defaultBillingEmail}
+              defaultRecipients={defaultBillingRecipients}
             />
           ) : (
             <div className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
-              Save this invoice as sent first, then use the PEPPOL actions.
+              {deliveryMethod === "peppol"
+                ? "Save this invoice as sent first, then use the PEPPOL actions."
+                : compliance.message ?? "This invoice cannot be emailed yet."}
             </div>
           )}
           <Button
@@ -177,12 +220,26 @@ export function InvoiceActions({ invoice }: { invoice: InvoiceWithCustomer }) {
                   {deliveryStatus === "failed" ? "Opnieuw via PEPPOL verzenden" : "Verzenden via PEPPOL"}
                 </Button>
               )}
+              {peppolWasDelivered && (
+                <SendInvoiceDialog
+                  invoiceId={invoice.id}
+                  invoiceNumber={invoice.invoiceNumber}
+                  defaultRecipients={defaultBillingRecipients}
+                  kind="courtesy"
+                  trigger={
+                    <Button variant="outline" className="w-full">
+                      <Mail className="mr-2 h-4 w-4" />
+                      {emailCopyStatus === "sent" ? "Resend Courtesy Copy" : "Send Courtesy Copy"}
+                    </Button>
+                  }
+                />
+              )}
             </>
-          ) : (
+          ) : !emailSendBlocked ? (
             <SendInvoiceDialog
               invoiceId={invoice.id}
               invoiceNumber={invoice.invoiceNumber}
-              defaultEmail={defaultBillingEmail}
+              defaultRecipients={defaultBillingRecipients}
               trigger={
                 <Button variant="default" className="w-full">
                   {deliveryStatus === "sent" ? <RefreshCcw className="mr-2 h-4 w-4" /> : <Mail className="mr-2 h-4 w-4" />}
@@ -190,6 +247,10 @@ export function InvoiceActions({ invoice }: { invoice: InvoiceWithCustomer }) {
                 </Button>
               }
             />
+          ) : (
+            <div className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
+              {compliance.message ?? "This invoice cannot be emailed yet."}
+            </div>
           )}
           <PaymentDialog
             invoiceId={invoice.id}

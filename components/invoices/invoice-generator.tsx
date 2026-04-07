@@ -7,8 +7,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { CustomerPicker } from "@/components/customers/customer-picker"
 import { FormError } from "@/components/forms/error"
 import {
+  classifyInvoiceDeliveryRequirement,
   getCustomerBillingEmails,
-  getDefaultInvoiceDeliveryMethod,
   getInvoiceDeliveryMethodLabel,
   normalizeInvoiceDeliveryMethod,
 } from "@/lib/invoice-delivery"
@@ -246,7 +246,14 @@ export function InvoiceGenerator({
   const [isBillToAutofill, setIsBillToAutofill] = useState(mode !== "edit")
   const [deliveryMethod, setDeliveryMethod] = useState(
     normalizeInvoiceDeliveryMethod(initialDeliveryMethod) ??
-      getDefaultInvoiceDeliveryMethod(initialCustomer ?? undefined)
+      classifyInvoiceDeliveryRequirement({
+        sellerCountry: settings.business_country_code,
+        customerCountry: initialCustomer?.country,
+        customerVatNumber: initialCustomer?.vatNumber,
+        customerPeppolId: initialCustomer?.peppolId,
+        customerDeliveryPreference: initialCustomer?.invoiceDeliveryMethod,
+        invoiceMode: initialFormData.invoiceMode,
+      }).defaultMethod
   )
   const [saveError, setSaveError] = useState("")
 
@@ -259,6 +266,18 @@ export function InvoiceGenerator({
   const total = useMemo(() => getInvoiceTotalAmount(formData), [formData])
   const isPeppol = deliveryMethod === "peppol"
   const isAuthorRightsInvoice = isAuthorRightsMode(formData.invoiceMode)
+  const deliveryCompliance = useMemo(
+    () =>
+      classifyInvoiceDeliveryRequirement({
+        sellerCountry: settings.business_country_code,
+        customerCountry: selectedCustomer?.country,
+        customerVatNumber: selectedCustomer?.vatNumber,
+        customerPeppolId: selectedCustomer?.peppolId,
+        customerDeliveryPreference: selectedCustomer?.invoiceDeliveryMethod,
+        invoiceMode: formData.invoiceMode,
+      }),
+    [formData.invoiceMode, selectedCustomer, settings.business_country_code]
+  )
   const authorRightsRule = useMemo(
     () => (isAuthorRightsInvoice ? getBelgianAuthorRightsRule(formData.authorRightsRuleYear) : null),
     [formData.authorRightsRuleYear, isAuthorRightsInvoice]
@@ -277,16 +296,19 @@ export function InvoiceGenerator({
   }, [autoBillTo, formData.billTo, isBillToAutofill])
 
   useEffect(() => {
-    if (isAuthorRightsInvoice && deliveryMethod !== "email_pdf") {
-      setDeliveryMethod("email_pdf")
+    if (isAuthorRightsInvoice && deliveryMethod !== deliveryCompliance.defaultMethod) {
+      setDeliveryMethod(deliveryCompliance.defaultMethod)
     }
-  }, [deliveryMethod, isAuthorRightsInvoice])
+  }, [deliveryCompliance.defaultMethod, deliveryMethod, isAuthorRightsInvoice])
 
   const readinessBlockers = useMemo(() => {
     const blockers: string[] = []
 
     if (!selectedCustomer) {
       blockers.push("Selecteer eerst een klant.")
+    }
+    if (selectedCustomer && !deliveryCompliance.scopeKnown) {
+      blockers.push(deliveryCompliance.message ?? "Vul eerst de compliance-gegevens van deze klant aan.")
     }
     if (!formData.invoiceNumber.trim()) {
       blockers.push("Voeg een factuurnummer toe.")
@@ -326,9 +348,16 @@ export function InvoiceGenerator({
       }
     }
 
-    if (isAuthorRightsInvoice && isPeppol) {
+    if (isAuthorRightsInvoice && deliveryCompliance.requiresStructuredInvoice && !deliveryCompliance.allowEmailFallback) {
+      blockers.push(
+        "Belgische B2B-auteursrechtenfacturen vereisen PEPPOL zodra die modus ondersteund is. Sla eerst op, verifieer de ontvanger en gebruik alleen e-mailfallback als de klant niet PEPPOL-ready is."
+      )
+    } else if (isAuthorRightsInvoice && isPeppol) {
       blockers.push("Auteursrechtenfacturen kunnen momenteel enkel via e-mail + PDF verzonden worden.")
     } else if (isPeppol) {
+      if (deliveryCompliance.allowEmailFallback) {
+        blockers.push(deliveryCompliance.message ?? "Deze factuur mag via e-mail verstuurd worden na PEPPOL-fallback.")
+      }
       if (!selectedCustomer?.peppolId?.trim()) {
         blockers.push("Voeg een PEPPOL-ID toe voor deze klant.")
       }
@@ -352,12 +381,17 @@ export function InvoiceGenerator({
         const environment = getRecommandEnvironmentLabel(getActiveRecommandEnvironment(settings))
         blockers.push(`Vul eerst je Recommand-gegevens aan voor de actieve ${environment}-omgeving.`)
       }
-    } else if (billingEmails.length === 0) {
-      blockers.push("Voeg eerst een facturatie-e-mailadres toe voor deze klant.")
+    } else {
+      if (deliveryCompliance.requiresStructuredInvoice && !deliveryCompliance.allowEmailFallback) {
+        blockers.push(deliveryCompliance.message ?? "Deze factuur moet via PEPPOL worden verstuurd.")
+      }
+      if (billingEmails.length === 0) {
+        blockers.push("Voeg eerst een facturatie-e-mailadres toe voor deze klant.")
+      }
     }
 
     return blockers
-  }, [authorRightsRule, billingEmails.length, formData, isAuthorRightsInvoice, isPeppol, selectedCustomer, settings])
+  }, [authorRightsRule, billingEmails.length, deliveryCompliance, formData, isAuthorRightsInvoice, isPeppol, selectedCustomer, settings])
   const primaryActionLabel = isPeppol ? "Factuur verzenden via PEPPOL" : "Factuur verzenden via e-mail"
 
   const handleTemplateSelect = (templateName: string) => {
@@ -447,7 +481,16 @@ export function InvoiceGenerator({
   const handleCustomerSelect = (customer: Customer | null) => {
     setSelectedCustomer(customer)
     setIsBillToAutofill(true)
-    setDeliveryMethod(getDefaultInvoiceDeliveryMethod(customer))
+    setDeliveryMethod(
+      classifyInvoiceDeliveryRequirement({
+        sellerCountry: settings.business_country_code,
+        customerCountry: customer?.country,
+        customerVatNumber: customer?.vatNumber,
+        customerPeppolId: customer?.peppolId,
+        customerDeliveryPreference: customer?.invoiceDeliveryMethod,
+        invoiceMode: formData.invoiceMode,
+      }).defaultMethod
+    )
   }
 
   const persistInvoice = async (status: "draft" | "sent") => {
@@ -523,7 +566,7 @@ export function InvoiceGenerator({
 
     const sendResult = isPeppol
       ? await sendInvoicePeppolAction(persistedInvoiceId)
-      : await sendInvoiceEmailAction(persistedInvoiceId, billingEmails[0] ?? "")
+      : await sendInvoiceEmailAction(persistedInvoiceId, billingEmails)
 
     if (!sendResult.success) {
       alert(

@@ -29,6 +29,7 @@ type InvoiceListProps = {
   locale?: UiLocale
   hasRecommandCredentials?: boolean
   recommandEnvironmentLabel?: string
+  sellerCountryCode?: string | null
 }
 
 type TabStatus = "all" | "draft" | "sent" | "overdue" | "paid"
@@ -131,6 +132,7 @@ export function InvoiceList({
   locale = DEFAULT_UI_LOCALE,
   hasRecommandCredentials,
   recommandEnvironmentLabel,
+  sellerCountryCode,
 }: InvoiceListProps) {
   const [search, setSearch] = useState("")
   const [activeTab, setActiveTab] = useState<TabStatus>("all")
@@ -199,10 +201,11 @@ export function InvoiceList({
 
     if (deliveryFilter !== "all") {
       result = result.filter((inv) => {
-    const readiness = getInvoiceDeliveryReadiness(inv, {
-      hasRecommandCredentials,
-      environmentLabel: recommandEnvironmentLabel,
-    })
+        const readiness = getInvoiceDeliveryReadiness(inv, {
+          hasRecommandCredentials,
+          environmentLabel: recommandEnvironmentLabel,
+          sellerCountryCode,
+        })
         if (deliveryFilter === "ready_to_send") return readiness.isReady
         if (deliveryFilter === "blocked") return !readiness.isReady
         if (deliveryFilter === "peppol_ready") return readiness.method === "peppol" && readiness.isReady
@@ -220,6 +223,7 @@ export function InvoiceList({
     deliveryFilter,
     hasRecommandCredentials,
     recommandEnvironmentLabel,
+    sellerCountryCode,
   ])
 
   const summaryCards = useMemo(() => {
@@ -240,6 +244,7 @@ export function InvoiceList({
       getInvoiceDeliveryReadiness(invoice, {
         hasRecommandCredentials,
         environmentLabel: recommandEnvironmentLabel,
+        sellerCountryCode,
       }).isReady
     )
     const blockedDrafts = draftInvoices.length - sendReadyDrafts.length
@@ -295,7 +300,7 @@ export function InvoiceList({
       },
     ]
     return cards
-  }, [invoices, hasRecommandCredentials, recommandEnvironmentLabel, locale])
+  }, [invoices, hasRecommandCredentials, recommandEnvironmentLabel, locale, sellerCountryCode])
 
   if (invoices.length === 0) {
     return (
@@ -452,6 +457,7 @@ export function InvoiceList({
                 const readiness = getInvoiceDeliveryReadiness(invoice, {
                   hasRecommandCredentials,
                   environmentLabel: recommandEnvironmentLabel,
+                  sellerCountryCode,
                 })
                 return (
                   <tr

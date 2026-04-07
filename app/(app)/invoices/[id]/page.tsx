@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { getCurrentUser } from "@/lib/auth"
 import { getInvoiceById } from "@/models/invoices"
 import { getFilesByTransactionId } from "@/models/files"
+import { getSettings } from "@/models/settings"
 import { formatCurrency } from "@/lib/utils"
 import { Pencil } from "lucide-react"
 import { Metadata } from "next"
@@ -33,7 +34,7 @@ export default async function InvoiceDetailPage({
 }) {
   const { id } = await params
   const user = await getCurrentUser()
-  const invoice = await getInvoiceById(id, user.id)
+  const [invoice, settings] = await Promise.all([getInvoiceById(id, user.id), getSettings(user.id)])
 
   if (!invoice) notFound()
 
@@ -174,6 +175,17 @@ export default async function InvoiceDetailPage({
               <span className="max-w-[55%] truncate text-right">{invoice.providerReferenceId}</span>
             </div>
           )}
+          {invoice.emailCopySentAt && (
+            <div className="flex justify-between text-muted-foreground">
+              <span>Courtesy copy</span>
+              <span>{new Date(invoice.emailCopySentAt).toLocaleDateString("nl-BE")}</span>
+            </div>
+          )}
+          {invoice.deliveryExceptionNote && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              {invoice.deliveryExceptionNote}
+            </div>
+          )}
           {invoice.providerError && (
             <div className="rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
               {invoice.providerError}
@@ -213,7 +225,7 @@ export default async function InvoiceDetailPage({
 
         {/* Actions */}
         <div className="border-t pt-4">
-          <InvoiceActions invoice={invoiceFull} />
+          <InvoiceActions invoice={invoiceFull} sellerCountryCode={settings.business_country_code} />
         </div>
 
         {/* Payment History */}

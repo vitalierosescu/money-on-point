@@ -3,8 +3,11 @@
 import { getCurrentUser } from "@/lib/auth"
 import { prisma } from "@/lib/db"
 import {
+  classifyInvoiceDeliveryRequirement,
   getInvoiceDeliveryMethod,
+  normalizeDeliveryExceptionCode,
   normalizeInvoiceDeliveryMethod,
+  parseEmailRecipients,
 } from "@/lib/invoice-delivery"
 import {
   validateInvoiceForPeppolDelivery,
@@ -12,17 +15,12 @@ import {
   type InvoiceFieldErrors,
 } from "@/lib/invoice-validation"
 import { isAuthorRightsMode } from "@/lib/author-rights"
+import { sendInvoicePdfEmail } from "@/lib/email"
 import { generateInvoicePDF } from "@/lib/invoice-pdf/generate"
 import { InvoiceTemplate } from "@/lib/invoice-pdf/templates"
 import type { InvoiceFormData } from "@/lib/invoice-pdf/types"
-import { verifyPeppolRecipient, sendInvoiceEmailViaRecommand } from "@/lib/recommand"
+import { verifyPeppolRecipient } from "@/lib/recommand"
 import { sendInvoiceViaPeppolForUser } from "@/lib/peppol-send"
-import { buildRecommandInvoicePayload, RecommandAttachment } from "@/lib/recommand-payload"
-import {
-  getActiveRecommandEnvironment,
-  getRecommandEnvironmentLabel,
-  hasConfiguredRecommandCredentials,
-} from "@/lib/recommand-settings"
 import {
   getDirectorySize,
   getUserUploadsDirectory,
@@ -58,11 +56,44 @@ type InvoiceActionResult<T = unknown> =
   | { success: true; data?: T }
   | { success: false; error: string; fieldErrors?: InvoiceFieldErrors }
 
-function flattenRecommandErrors(errors?: Record<string, string[]>): string {
-  if (!errors) return "Recommand rejected the invoice."
-  return Object.entries(errors)
-    .flatMap(([field, messages]) => messages.map((message) => `${field}: ${message}`))
-    .join(" ")
+type InvoiceWithCustomerRecord = Prisma.InvoiceGetPayload<{ include: { customer: true } }>
+
+function getResendErrorMessage(error: unknown): string {
+  if (error && typeof error === "object" && "message" in error && typeof error.message === "string") {
+    return error.message
+  }
+  return "Email sending failed."
+}
+
+function getInvoicePeppolVerificationPassed(invoice: InvoiceWithCustomerRecord): boolean | null {
+  if (normalizeDeliveryExceptionCode(invoice.deliveryExceptionCode) === "customer_not_peppol_ready") {
+    return false
+  }
+
+  if (invoice.deliveryStatus === "verified") {
+    return true
+  }
+
+  if (getInvoiceDeliveryMethod(invoice) === "peppol" && invoice.deliveryStatus === "sent") {
+    return true
+  }
+
+  return null
+}
+
+function getInvoiceDeliveryCompliance(
+  settings: Record<string, string>,
+  invoice: InvoiceWithCustomerRecord
+) {
+  return classifyInvoiceDeliveryRequirement({
+    sellerCountry: settings.business_country_code,
+    customerCountry: invoice.customer.country,
+    customerVatNumber: invoice.customer.vatNumber,
+    customerPeppolId: invoice.customer.peppolId,
+    customerDeliveryPreference: invoice.customer.invoiceDeliveryMethod,
+    invoiceMode: invoice.invoiceMode,
+    peppolVerificationPassed: getInvoicePeppolVerificationPassed(invoice),
+  })
 }
 
 export async function addNewTemplateAction(user: User, template: InvoiceTemplate) {
@@ -280,7 +311,10 @@ export async function deleteInvoiceAction(id: string) {
   return { success: true }
 }
 
-export async function sendInvoiceEmailAction(invoiceId: string, recipientEmail: string): Promise<InvoiceActionResult> {
+export async function sendInvoiceEmailAction(
+  invoiceId: string,
+  recipientInput: string | string[]
+): Promise<InvoiceActionResult> {
   const user = await getCurrentUser()
 
   const invoice = await prisma.invoice.findFirst({
@@ -291,6 +325,7 @@ export async function sendInvoiceEmailAction(invoiceId: string, recipientEmail: 
   if (!invoice) {
     return { success: false, error: "Invoice not found" }
   }
+  const recipientEmails = parseEmailRecipients(recipientInput)
   if (!["draft", "sent", "overdue", "partially_paid"].includes(invoice.status)) {
     return { success: false, error: "This invoice can no longer be sent." }
   }
@@ -313,7 +348,7 @@ export async function sendInvoiceEmailAction(invoiceId: string, recipientEmail: 
     currency: invoice.currency,
     items: invoice.items,
     templateData,
-    recipientEmail,
+    recipientEmails,
   })
 
   if (validation.message) {
@@ -321,35 +356,31 @@ export async function sendInvoiceEmailAction(invoiceId: string, recipientEmail: 
   }
 
   const settings = await getSettings(user.id)
-  const activeEnvironment = getActiveRecommandEnvironment(settings)
-  if (!hasConfiguredRecommandCredentials(settings, activeEnvironment)) {
-    return {
-      success: false,
-      error: `Add Recommand credentials for the active ${getRecommandEnvironmentLabel(activeEnvironment)} environment.`,
-    }
+  const compliance = getInvoiceDeliveryCompliance(settings, invoice)
+
+  if (!compliance.scopeKnown) {
+    return { success: false, error: compliance.message ?? "Delivery compliance data is incomplete." }
   }
 
-  // Generate PDF from stored templateData
+  if (compliance.requiresStructuredInvoice && !compliance.allowEmailFallback) {
+    return { success: false, error: compliance.message ?? "This invoice must be sent via PEPPOL." }
+  }
+
   const pdfBuffer = await generateInvoicePDF(templateData)
-  const pdfBase64 = Buffer.from(pdfBuffer).toString("base64")
-
-  const attachments: RecommandAttachment[] = [
-    {
-      id: "INV-PDF",
-      documentType: "130",
-      mimeCode: "application/pdf",
-      filename: `${invoice.invoiceNumber}.pdf`,
-      embeddedDocument: pdfBase64,
-    },
-  ]
-
-  const payload = buildRecommandInvoicePayload(user, settings, invoice, attachments)
+  const pdfFilename = `${invoice.invoiceNumber}.pdf`
 
   try {
-    const result = await sendInvoiceEmailViaRecommand(settings, [recipientEmail], payload)
+    const result = await sendInvoicePdfEmail({
+      to: recipientEmails,
+      invoiceNumber: invoice.invoiceNumber,
+      businessName: user.businessName?.trim() || "Your business",
+      customerName: invoice.customer.name,
+      pdfFilename,
+      pdfContent: Buffer.from(pdfBuffer),
+    })
 
-    if (!result.success) {
-      const providerError = flattenRecommandErrors(result.errors)
+    if (result.error) {
+      const providerError = getResendErrorMessage(result.error)
       await prisma.invoice.update({
         where: { id: invoiceId, userId: user.id },
         data: {
@@ -369,8 +400,12 @@ export async function sendInvoiceEmailAction(invoiceId: string, recipientEmail: 
         deliveryMethod: "email_pdf",
         deliveryStatus: "sent",
         deliverySentAt: new Date(),
-        providerReferenceId: result.id ?? null,
+        providerReferenceId: result.data?.id ?? null,
         providerError: null,
+        deliveryExceptionCode: compliance.allowEmailFallback ? "customer_not_peppol_ready" : null,
+        deliveryExceptionNote: compliance.allowEmailFallback
+          ? invoice.deliveryExceptionNote ?? compliance.message
+          : null,
       },
     })
 
@@ -391,6 +426,106 @@ export async function sendInvoiceEmailAction(invoiceId: string, recipientEmail: 
   }
 }
 
+export async function sendInvoiceCourtesyEmailAction(
+  invoiceId: string,
+  recipientInput: string | string[]
+): Promise<InvoiceActionResult> {
+  const user = await getCurrentUser()
+  const invoice = await prisma.invoice.findFirst({
+    where: { id: invoiceId, userId: user.id },
+    include: { customer: true },
+  })
+
+  if (!invoice) {
+    return { success: false, error: "Invoice not found" }
+  }
+
+  const recipientEmails = parseEmailRecipients(recipientInput)
+  if (getInvoiceDeliveryMethod(invoice) !== "peppol") {
+    return { success: false, error: "Courtesy email copies are only available for PEPPOL invoices." }
+  }
+  if (invoice.deliveryStatus !== "sent") {
+    return { success: false, error: "Send the official PEPPOL invoice first before sending a courtesy copy." }
+  }
+  if (!["sent", "overdue", "partially_paid", "paid"].includes(invoice.status)) {
+    return { success: false, error: "This invoice can no longer be emailed." }
+  }
+  if (!invoice.templateData) {
+    return { success: false, error: "Invoice has no template data — open and save the invoice first" }
+  }
+
+  const templateData = invoice.templateData as unknown as InvoiceFormData
+  const validation = validateInvoiceForSending({
+    businessName: user.businessName,
+    businessAddress: user.businessAddress,
+    businessBankDetails: user.businessBankDetails,
+    customer: invoice.customer,
+    invoiceNumber: invoice.invoiceNumber,
+    issuedAt: invoice.issuedAt,
+    dueDate: invoice.dueDate,
+    currency: invoice.currency,
+    items: invoice.items,
+    templateData,
+    recipientEmails,
+  })
+
+  if (validation.message) {
+    return { success: false, error: validation.message, fieldErrors: validation.fieldErrors }
+  }
+
+  const pdfBuffer = await generateInvoicePDF(templateData)
+  const pdfFilename = `${invoice.invoiceNumber}.pdf`
+
+  try {
+    const result = await sendInvoicePdfEmail({
+      to: recipientEmails,
+      invoiceNumber: invoice.invoiceNumber,
+      businessName: user.businessName?.trim() || "Your business",
+      customerName: invoice.customer.name,
+      pdfFilename,
+      pdfContent: Buffer.from(pdfBuffer),
+      isCourtesyCopy: true,
+    })
+
+    if (result.error) {
+      const providerError = getResendErrorMessage(result.error)
+      await prisma.invoice.update({
+        where: { id: invoiceId, userId: user.id },
+        data: {
+          emailCopyStatus: "failed",
+          emailCopyProvider: "resend",
+        },
+      })
+      revalidateInvoiceDeliveryPaths(invoiceId)
+      return { success: false, error: providerError }
+    }
+
+    await prisma.invoice.update({
+      where: { id: invoiceId, userId: user.id },
+      data: {
+        emailCopyStatus: "sent",
+        emailCopySentAt: new Date(),
+        emailCopyRecipients: recipientEmails,
+        emailCopyProvider: "resend",
+      },
+    })
+
+    revalidateInvoiceDeliveryPaths(invoiceId)
+    return { success: true }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Courtesy email failed."
+    await prisma.invoice.update({
+      where: { id: invoiceId, userId: user.id },
+      data: {
+        emailCopyStatus: "failed",
+        emailCopyProvider: "resend",
+      },
+    })
+    revalidateInvoiceDeliveryPaths(invoiceId)
+    return { success: false, error: message }
+  }
+}
+
 export async function setInvoiceDeliveryMethodAction(
   invoiceId: string,
   deliveryMethod: string
@@ -404,6 +539,7 @@ export async function setInvoiceDeliveryMethodAction(
 
   const invoice = await prisma.invoice.findFirst({
     where: { id: invoiceId, userId: user.id },
+    include: { customer: true },
   })
 
   if (!invoice) {
@@ -412,6 +548,19 @@ export async function setInvoiceDeliveryMethodAction(
 
   if (normalizedMethod === "peppol" && isAuthorRightsMode(invoice.invoiceMode)) {
     return { success: false, error: "Author-rights invoices are currently supported with Email + PDF only." }
+  }
+
+  if (normalizedMethod === "email_pdf") {
+    const settings = await getSettings(user.id)
+    const compliance = getInvoiceDeliveryCompliance(settings, invoice)
+
+    if (!compliance.scopeKnown) {
+      return { success: false, error: compliance.message ?? "Delivery compliance data is incomplete." }
+    }
+
+    if (compliance.requiresStructuredInvoice && !compliance.allowEmailFallback) {
+      return { success: false, error: compliance.message ?? "This invoice must be sent via PEPPOL." }
+    }
   }
 
   if (invoice.deliveryStatus === "sent") {
@@ -490,6 +639,8 @@ export async function verifyInvoicePeppolRecipientAction(invoiceId: string): Pro
           deliveryMethod: "peppol",
           deliveryStatus: "failed",
           providerError: result.message ?? "Recipient is not registered in the PEPPOL network.",
+          deliveryExceptionCode: "customer_not_peppol_ready",
+          deliveryExceptionNote: result.message ?? "Recipient is not registered in the PEPPOL network.",
         },
       })
       revalidateInvoiceDeliveryPaths(invoice.id)
@@ -502,6 +653,8 @@ export async function verifyInvoicePeppolRecipientAction(invoiceId: string): Pro
         deliveryMethod: "peppol",
         deliveryStatus: "verified",
         providerError: null,
+        deliveryExceptionCode: null,
+        deliveryExceptionNote: null,
       },
     })
     revalidateInvoiceDeliveryPaths(invoice.id)
@@ -589,6 +742,12 @@ export async function duplicateInvoiceAction(id: string) {
     deliverySentAt: null,
     providerReferenceId: null,
     providerError: null,
+    emailCopyStatus: "not_sent",
+    emailCopySentAt: null,
+    emailCopyRecipients: [],
+    emailCopyProvider: null,
+    deliveryExceptionCode: null,
+    deliveryExceptionNote: null,
     templateData: original.templateData ?? undefined,
   })
 
@@ -696,6 +855,33 @@ async function validateInvoiceDraftOrSent(
   const customer = await prisma.customer.findFirst({
     where: { id: data.customerId, userId },
   })
+  const settings = await getSettings(userId)
+
+  const compliance = classifyInvoiceDeliveryRequirement({
+    sellerCountry: settings.business_country_code,
+    customerCountry: customer?.country,
+    customerVatNumber: customer?.vatNumber,
+    customerPeppolId: customer?.peppolId,
+    customerDeliveryPreference: customer?.invoiceDeliveryMethod,
+    invoiceMode: data.invoiceMode,
+  })
+
+  if (!compliance.scopeKnown) {
+    return {
+      success: false,
+      error: compliance.message ?? "Delivery compliance data is incomplete.",
+      fieldErrors: { deliveryMethod: compliance.message ?? "Delivery compliance data is incomplete." },
+    }
+  }
+
+  const selectedMethod = normalizeInvoiceDeliveryMethod(data.deliveryMethod)
+  if (selectedMethod === "email_pdf" && compliance.requiresStructuredInvoice && !compliance.allowEmailFallback) {
+    return {
+      success: false,
+      error: compliance.message ?? "This invoice must be sent via PEPPOL.",
+      fieldErrors: { deliveryMethod: compliance.message ?? "This invoice must be sent via PEPPOL." },
+    }
+  }
 
   const validation = validateInvoiceForSending({
     businessName: user.businessName,

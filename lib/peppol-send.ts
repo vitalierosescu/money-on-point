@@ -87,6 +87,8 @@ export async function sendInvoiceViaPeppolForUser(userId: string, invoiceId: str
           deliveryMethod: "peppol",
           deliveryStatus: "failed",
           providerError: verification.message ?? "Recipient is not registered in the PEPPOL network.",
+          deliveryExceptionCode: "customer_not_peppol_ready",
+          deliveryExceptionNote: verification.message ?? "Recipient is not registered in the PEPPOL network.",
         },
       })
       return { success: false, error: verification.message ?? "Recipient is not registered in the PEPPOL network." }
@@ -121,6 +123,8 @@ export async function sendInvoiceViaPeppolForUser(userId: string, invoiceId: str
         deliverySentAt: new Date(),
         providerReferenceId: result.id ?? validation.normalizedPeppolAddress,
         providerError: null,
+        deliveryExceptionCode: null,
+        deliveryExceptionNote: null,
       },
     })
 

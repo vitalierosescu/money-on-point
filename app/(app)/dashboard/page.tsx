@@ -54,6 +54,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     const readiness = getInvoiceDeliveryReadiness(invoice, {
       hasRecommandCredentials: activePeppolReady,
       environmentLabel: activePeppolLabel,
+      sellerCountryCode: settings.business_country_code,
     })
     if (!readiness.isReady) return true
     return getInvoiceDeliveryMethod(invoice) === "peppol" && peppolSenderMissing

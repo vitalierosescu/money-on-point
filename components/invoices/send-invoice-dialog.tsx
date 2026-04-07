@@ -13,37 +13,54 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { sendInvoiceEmailAction } from "@/app/(app)/invoices/actions"
+import { sendInvoiceCourtesyEmailAction, sendInvoiceEmailAction } from "@/app/(app)/invoices/actions"
+import { parseEmailRecipients } from "@/lib/invoice-delivery"
 import { toast } from "sonner"
 import { Send } from "lucide-react"
 
 interface SendInvoiceDialogProps {
   invoiceId: string
   invoiceNumber: string
-  defaultEmail: string
+  defaultRecipients: string[]
+  kind?: "official" | "courtesy"
   trigger?: React.ReactNode
 }
 
 export function SendInvoiceDialog({
   invoiceId,
   invoiceNumber,
-  defaultEmail,
+  defaultRecipients,
+  kind = "official",
   trigger,
 }: SendInvoiceDialogProps) {
   const [open, setOpen] = useState(false)
-  const [email, setEmail] = useState(defaultEmail)
+  const [recipients, setRecipients] = useState(defaultRecipients.join(", "))
   const [isPending, startTransition] = useTransition()
 
   useEffect(() => {
-    setEmail(defaultEmail)
-  }, [defaultEmail])
+    setRecipients(defaultRecipients.join(", "))
+  }, [defaultRecipients])
 
   function handleSend() {
-    if (!email || !email.includes("@")) return
+    const parsedRecipients = parseEmailRecipients(recipients)
+    if (parsedRecipients.length === 0) return
     startTransition(async () => {
       try {
-        await sendInvoiceEmailAction(invoiceId, email)
-        toast.success(`Factuur ${invoiceNumber} verzonden naar ${email}`)
+        const result =
+          kind === "courtesy"
+            ? await sendInvoiceCourtesyEmailAction(invoiceId, parsedRecipients)
+            : await sendInvoiceEmailAction(invoiceId, parsedRecipients)
+
+        if (!result.success) {
+          toast.error(result.error || "Verzenden mislukt")
+          return
+        }
+
+        toast.success(
+          kind === "courtesy"
+            ? `Kopie van factuur ${invoiceNumber} verzonden`
+            : `Factuur ${invoiceNumber} verzonden`
+        )
         setOpen(false)
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Verzenden mislukt")
@@ -63,20 +80,22 @@ export function SendInvoiceDialog({
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Factuur verzenden</DialogTitle>
+          <DialogTitle>{kind === "courtesy" ? "Factuurkopie verzenden" : "Factuur verzenden"}</DialogTitle>
           <DialogDescription>
-            Factuur {invoiceNumber} wordt als PDF per e-mail verstuurd.
+            {kind === "courtesy"
+              ? `Factuur ${invoiceNumber} wordt als PDF-kopie per e-mail verstuurd.`
+              : `Factuur ${invoiceNumber} wordt als PDF per e-mail verstuurd.`}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-2">
-            <Label htmlFor="recipient-email">Ontvanger</Label>
+            <Label htmlFor="recipient-email">Ontvangers</Label>
             <Input
               id="recipient-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="klant@bedrijf.be"
+              type="text"
+              value={recipients}
+              onChange={(e) => setRecipients(e.target.value)}
+              placeholder="klant@bedrijf.be, finance@bedrijf.be"
             />
           </div>
         </div>
@@ -84,7 +103,7 @@ export function SendInvoiceDialog({
           <Button variant="outline" onClick={() => setOpen(false)} disabled={isPending}>
             Annuleren
           </Button>
-          <Button onClick={handleSend} disabled={isPending || !email}>
+          <Button onClick={handleSend} disabled={isPending || parseEmailRecipients(recipients).length === 0}>
             {isPending ? "Bezig..." : "Verzenden"}
           </Button>
         </DialogFooter>

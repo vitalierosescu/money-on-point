@@ -8,7 +8,7 @@ import { CustomerEditPanel } from "@/components/customers/customer-edit-panel"
 import { InvoiceStatusBadge } from "@/components/invoices/invoice-status-badge"
 import { Button } from "@/components/ui/button"
 import {
-  getDefaultInvoiceDeliveryMethod,
+  classifyInvoiceDeliveryRequirement,
   getInvoiceDeliveryMethodLabel,
   isEmailDeliveryReady,
   isPeppolDeliveryReadyForCustomer,
@@ -32,9 +32,11 @@ type InvoiceFilter = "all" | "open" | "paid"
 export function CustomerDetail({
   customer: initialCustomer,
   invoices,
+  sellerCountryCode,
 }: {
   customer: Customer
   invoices: Invoice[]
+  sellerCountryCode?: string | null
 }) {
   const [customer, setCustomer] = useState(initialCustomer)
   const [invoiceFilter, setInvoiceFilter] = useState<InvoiceFilter>("all")
@@ -80,13 +82,26 @@ export function CustomerDetail({
     return totals
   }, [openInvoices])
 
-  const deliveryMethod = getDefaultInvoiceDeliveryMethod(customer)
+  const deliveryCompliance = classifyInvoiceDeliveryRequirement({
+    sellerCountry: sellerCountryCode,
+    customerCountry: customer.country,
+    customerVatNumber: customer.vatNumber,
+    customerPeppolId: customer.peppolId,
+    customerDeliveryPreference: customer.invoiceDeliveryMethod,
+  })
+  const deliveryMethod = deliveryCompliance.defaultMethod
   const deliveryMethodLabel = getInvoiceDeliveryMethodLabel(deliveryMethod)
-  const deliveryReady =
-    deliveryMethod === "email_pdf" ? isEmailDeliveryReady(customer) : isPeppolDeliveryReadyForCustomer(customer)
-  const deliveryWarning =
-    deliveryMethod === "email_pdf"
-      ? "Add a billing email before sending by email."
+  const deliveryReady = !deliveryCompliance.scopeKnown
+    ? false
+    : deliveryMethod === "email_pdf"
+      ? isEmailDeliveryReady(customer) && (!deliveryCompliance.requiresStructuredInvoice || deliveryCompliance.allowEmailFallback)
+      : isPeppolDeliveryReadyForCustomer(customer)
+  const deliveryWarning = !deliveryCompliance.scopeKnown
+    ? deliveryCompliance.message ?? "Complete this customer's compliance details before sending."
+    : deliveryMethod === "email_pdf"
+      ? deliveryCompliance.requiresStructuredInvoice && !deliveryCompliance.allowEmailFallback
+        ? deliveryCompliance.message ?? "This invoice must be sent via PEPPOL."
+        : "Add a billing email before sending by email."
       : "Add a PEPPOL ID and full postal address before sending via PEPPOL."
 
   return (

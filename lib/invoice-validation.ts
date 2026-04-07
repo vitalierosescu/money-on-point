@@ -4,6 +4,7 @@ import {
   getPeppolBusinessReadiness,
   hasCustomerPostalAddress,
   normalizeCountryCode,
+  parseEmailRecipients,
 } from "@/lib/invoice-delivery"
 import { isAuthorRightsMode } from "@/lib/author-rights"
 import type { SettingsMap } from "@/models/settings"
@@ -32,6 +33,7 @@ type InvoiceValidationInput = {
   items?: unknown
   templateData?: InvoiceFormData | null
   recipientEmail?: string | null
+  recipientEmails?: string[] | null
 }
 
 type PeppolValidationInput = InvoiceValidationInput & {
@@ -117,11 +119,12 @@ export function validateInvoiceForSending(input: InvoiceValidationInput): {
     fieldErrors.items = "Add at least one valid invoice line item."
   }
 
-  if (input.recipientEmail !== undefined) {
-    if (isBlank(input.recipientEmail)) {
-      fieldErrors.recipientEmail = "Recipient email is required."
-    } else if (!String(input.recipientEmail).includes("@")) {
-      fieldErrors.recipientEmail = "Recipient email looks invalid."
+  if (input.recipientEmail !== undefined || input.recipientEmails !== undefined) {
+    const recipients = parseEmailRecipients(input.recipientEmails ?? input.recipientEmail)
+    if (recipients.length === 0) {
+      fieldErrors.recipientEmail = "At least one recipient email is required."
+    } else if (recipients.some((recipient) => !recipient.includes("@"))) {
+      fieldErrors.recipientEmail = "One or more recipient emails look invalid."
     }
   }
 

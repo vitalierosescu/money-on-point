@@ -8,7 +8,7 @@ Statuses:
 ## Core App
 
 - `live` Dashboard with hero, work queue, upload entry points, stats, and reports shortcuts
-- `live` Invoices list, filters, drawer, create/edit flow, PDF generation, email sending, payment actions
+- `live` Invoices list, filters, drawer, create/edit flow, PDF generation, Resend email sending, PEPPOL sending, payment actions
 - `live` Expenses list, status tabs, bulk actions, drawer, edit flow, file attachment handling
 - `live` Customers list and customer detail pages
 - `live` Files page and file library flows
@@ -19,6 +19,7 @@ Statuses:
 ## Integrations
 
 - `live` Outbound PEPPOL via Recommand Playground and Production configuration
+- `live` Invoice email delivery via Resend, including optional courtesy copies for PEPPOL invoices
 - `partial` Archie invoice ingestion and webhook/manual sync
 - `planned` Inbound PEPPOL sync
 

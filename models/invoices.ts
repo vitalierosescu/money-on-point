@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/db"
-import { normalizeInvoiceDeliveryMethod, normalizeInvoiceDeliveryStatus } from "@/lib/invoice-delivery"
+import {
+  normalizeEmailCopyStatus,
+  normalizeInvoiceDeliveryMethod,
+  normalizeInvoiceDeliveryStatus,
+} from "@/lib/invoice-delivery"
 import { Invoice, Prisma } from "@/prisma/client"
 import { cache } from "react"
 
@@ -118,6 +122,12 @@ export type CreateInvoiceData = {
   deliverySentAt?: Date | null
   providerReferenceId?: string | null
   providerError?: string | null
+  emailCopyStatus?: string | null
+  emailCopySentAt?: Date | null
+  emailCopyRecipients?: unknown
+  emailCopyProvider?: string | null
+  deliveryExceptionCode?: string | null
+  deliveryExceptionNote?: string | null
   templateData?: unknown
   pdfPath?: string | null
 }
@@ -140,6 +150,12 @@ export const createInvoice = async (
       deliverySentAt: data.deliverySentAt,
       providerReferenceId: data.providerReferenceId,
       providerError: data.providerError,
+      emailCopyStatus: normalizeEmailCopyStatus(data.emailCopyStatus),
+      emailCopySentAt: data.emailCopySentAt,
+      emailCopyRecipients: data.emailCopyRecipients as Prisma.InputJsonValue | undefined,
+      emailCopyProvider: data.emailCopyProvider,
+      deliveryExceptionCode: data.deliveryExceptionCode,
+      deliveryExceptionNote: data.deliveryExceptionNote,
       userId,
     },
     include: { customer: true },
@@ -163,6 +179,12 @@ export const updateInvoice = async (
     deliverySentAt,
     providerReferenceId,
     providerError,
+    emailCopyStatus,
+    emailCopySentAt,
+    emailCopyRecipients,
+    emailCopyProvider,
+    deliveryExceptionCode,
+    deliveryExceptionNote,
     ...rest
   } = data
   const updateData: Prisma.InvoiceUpdateInput = { ...rest }
@@ -189,6 +211,24 @@ export const updateInvoice = async (
   }
   if (providerError !== undefined) {
     updateData.providerError = providerError
+  }
+  if (emailCopyStatus !== undefined) {
+    updateData.emailCopyStatus = normalizeEmailCopyStatus(emailCopyStatus)
+  }
+  if (emailCopySentAt !== undefined) {
+    updateData.emailCopySentAt = emailCopySentAt
+  }
+  if (emailCopyRecipients !== undefined) {
+    updateData.emailCopyRecipients = emailCopyRecipients as Prisma.InputJsonValue
+  }
+  if (emailCopyProvider !== undefined) {
+    updateData.emailCopyProvider = emailCopyProvider
+  }
+  if (deliveryExceptionCode !== undefined) {
+    updateData.deliveryExceptionCode = deliveryExceptionCode
+  }
+  if (deliveryExceptionNote !== undefined) {
+    updateData.deliveryExceptionNote = deliveryExceptionNote
   }
 
   return prisma.invoice.update({
