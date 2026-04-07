@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 
 export default async function CustomersPage() {
   const user = await getCurrentUser()
-  const customers = await getCustomersWithInvoiceStats(user.id)
+  const customers = await getCustomersWithInvoiceStats(user.id, { includeArchived: true })
   const stats = await getCustomerStats(user.id)
 
   return (

@@ -24,7 +24,7 @@ export default async function EditInvoicePage({
 
   const [invoice, customers, currencies, settings] = await Promise.all([
     getInvoiceById(id, user.id),
-    getCustomers(user.id),
+    getCustomers(user.id, undefined, { includeArchived: true }),
     getCurrencies(user.id),
     getSettings(user.id),
   ])

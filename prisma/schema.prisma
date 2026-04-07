@@ -255,6 +255,8 @@ model Customer {
   defaultCurrency String?  @default("EUR") @map("default_currency")
   note            String?
 
+  archivedAt DateTime? @map("archived_at")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -262,6 +264,7 @@ model Customer {
   transactions Transaction[]
   archieMaps   ArchieCustomerMap[]
 
+  @@index([archivedAt])
   @@map("customers")
 }
 
@@ -271,7 +274,20 @@ model Invoice {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   customerId String   @map("customer_id") @db.Uuid
-  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  // Snapshot of customer data at the time of issue. Frozen for legal/accounting integrity.
+  customerName          String? @map("customer_name")
+  customerEmail         String? @map("customer_email")
+  customerContactPerson String? @map("customer_contact_person")
+  customerStreet        String? @map("customer_street")
+  customerHouseNumber   String? @map("customer_house_number")
+  customerBus           String? @map("customer_bus")
+  customerZipCode       String? @map("customer_zip_code")
+  customerCity          String? @map("customer_city")
+  customerCountry       String? @map("customer_country")
+  customerVatNumber     String? @map("customer_vat_number")
+  customerPeppolId      String? @map("customer_peppol_id")
 
   invoiceNumber String @map("invoice_number")
   status        String @default("draft")

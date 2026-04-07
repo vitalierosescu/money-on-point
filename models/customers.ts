@@ -28,8 +28,13 @@ export type CustomerData = {
 }
 
 export const getCustomers = cache(
-  async (userId: string, search?: string): Promise<Customer[]> => {
+  async (
+    userId: string,
+    search?: string,
+    options?: { includeArchived?: boolean }
+  ): Promise<Customer[]> => {
     const where: Prisma.CustomerWhereInput = { userId }
+    if (!options?.includeArchived) where.archivedAt = null
 
     if (search) {
       where.OR = [
@@ -59,9 +64,15 @@ export type CustomerWithInvoiceStats = Customer & {
 const OPEN_INVOICE_STATUSES = ["sent", "overdue", "partially_paid"] as const
 
 export const getCustomersWithInvoiceStats = cache(
-  async (userId: string): Promise<CustomerWithInvoiceStats[]> => {
+  async (
+    userId: string,
+    options?: { includeArchived?: boolean }
+  ): Promise<CustomerWithInvoiceStats[]> => {
     const customers = await prisma.customer.findMany({
-      where: { userId },
+      where: {
+        userId,
+        ...(options?.includeArchived ? {} : { archivedAt: null }),
+      },
       orderBy: { name: "asc" },
       include: {
         invoices: {
@@ -160,10 +171,66 @@ export const getInvoicesByCustomer = cache(
   }
 )
 
+/**
+ * Returns counts of records that would block a hard delete.
+ * Invoices are legal/accounting records and must never cascade-delete.
+ */
+export const getCustomerDeletionInfo = async (
+  id: string,
+  userId: string
+): Promise<{ exists: boolean; invoiceCount: number; archivedAt: Date | null }> => {
+  const customer = await prisma.customer.findFirst({
+    where: { id, userId },
+    select: {
+      archivedAt: true,
+      _count: { select: { invoices: true } },
+    },
+  })
+  if (!customer) return { exists: false, invoiceCount: 0, archivedAt: null }
+  return {
+    exists: true,
+    invoiceCount: customer._count.invoices,
+    archivedAt: customer.archivedAt,
+  }
+}
+
+export const archiveCustomer = async (
+  id: string,
+  userId: string
+): Promise<Customer> => {
+  return prisma.customer.update({
+    where: { id, userId },
+    data: { archivedAt: new Date() },
+  })
+}
+
+export const restoreCustomer = async (
+  id: string,
+  userId: string
+): Promise<Customer> => {
+  return prisma.customer.update({
+    where: { id, userId },
+    data: { archivedAt: null },
+  })
+}
+
+/**
+ * Hard delete a customer. Only permitted when the customer has zero invoices.
+ * Callers should prefer archiveCustomer for any customer with history.
+ */
 export const deleteCustomer = async (
   id: string,
   userId: string
 ): Promise<Customer> => {
+  const info = await getCustomerDeletionInfo(id, userId)
+  if (!info.exists) {
+    throw new Error("Customer not found")
+  }
+  if (info.invoiceCount > 0) {
+    throw new Error(
+      "Customer has invoices and cannot be deleted. Archive the customer instead."
+    )
+  }
   return prisma.customer.delete({
     where: { id, userId },
   })

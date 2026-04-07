@@ -1,7 +1,15 @@
 "use server"
 
 import { getCurrentUser } from "@/lib/auth"
-import { createCustomer, updateCustomer, deleteCustomer, CustomerData } from "@/models/customers"
+import {
+  createCustomer,
+  updateCustomer,
+  deleteCustomer,
+  archiveCustomer,
+  restoreCustomer,
+  getCustomerDeletionInfo,
+  CustomerData,
+} from "@/models/customers"
 import { getSettings } from "@/models/settings"
 import {
   searchRecommandDirectory,
@@ -35,11 +43,45 @@ export async function updateCustomerAction(id: string, data: CustomerData) {
   return { success: true, data: customer }
 }
 
+export async function getCustomerDeletionInfoAction(id: string) {
+  const user = await getCurrentUser()
+  const info = await getCustomerDeletionInfo(id, user.id)
+  return { success: true as const, data: info }
+}
+
+/**
+ * Hard-delete only. Fails (and returns an error) if the customer has any
+ * invoices. The UI should call getCustomerDeletionInfoAction first and
+ * present an Archive flow when invoiceCount > 0.
+ */
 export async function deleteCustomerAction(id: string) {
   const user = await getCurrentUser()
-  await deleteCustomer(id, user.id)
+  try {
+    await deleteCustomer(id, user.id)
+  } catch (error) {
+    return {
+      success: false as const,
+      error: error instanceof Error ? error.message : "Failed to delete customer.",
+    }
+  }
   revalidatePath("/customers")
-  return { success: true }
+  return { success: true as const }
+}
+
+export async function archiveCustomerAction(id: string) {
+  const user = await getCurrentUser()
+  await archiveCustomer(id, user.id)
+  revalidatePath("/customers")
+  revalidatePath(`/customers/${id}`)
+  return { success: true as const }
+}
+
+export async function restoreCustomerAction(id: string) {
+  const user = await getCurrentUser()
+  await restoreCustomer(id, user.id)
+  revalidatePath("/customers")
+  revalidatePath(`/customers/${id}`)
+  return { success: true as const }
 }
 
 // ---------------------------------------------------------------------------

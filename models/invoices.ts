@@ -136,9 +136,40 @@ export const createInvoice = async (
   userId: string,
   data: CreateInvoiceData
 ): Promise<Invoice> => {
+  // Snapshot customer data onto the invoice at issue time so the invoice
+  // remains a self-contained legal record even if the customer is later
+  // archived or its fields are edited.
+  const customerSnapshot = await prisma.customer.findFirst({
+    where: { id: data.customerId, userId },
+    select: {
+      name: true,
+      email: true,
+      contactPerson: true,
+      street: true,
+      houseNumber: true,
+      bus: true,
+      zipCode: true,
+      city: true,
+      country: true,
+      vatNumber: true,
+      peppolId: true,
+    },
+  })
+
   return prisma.invoice.create({
     data: {
       ...data,
+      customerName: customerSnapshot?.name ?? null,
+      customerEmail: customerSnapshot?.email ?? null,
+      customerContactPerson: customerSnapshot?.contactPerson ?? null,
+      customerStreet: customerSnapshot?.street ?? null,
+      customerHouseNumber: customerSnapshot?.houseNumber ?? null,
+      customerBus: customerSnapshot?.bus ?? null,
+      customerZipCode: customerSnapshot?.zipCode ?? null,
+      customerCity: customerSnapshot?.city ?? null,
+      customerCountry: customerSnapshot?.country ?? null,
+      customerVatNumber: customerSnapshot?.vatNumber ?? null,
+      customerPeppolId: customerSnapshot?.peppolId ?? null,
       items: data.items as Prisma.InputJsonValue,
       taxes: data.taxes as Prisma.InputJsonValue,
       fees: data.fees as Prisma.InputJsonValue,
@@ -229,6 +260,46 @@ export const updateInvoice = async (
   }
   if (deliveryExceptionNote !== undefined) {
     updateData.deliveryExceptionNote = deliveryExceptionNote
+  }
+
+  // While the invoice is still a draft, refresh the customer snapshot from
+  // the current customer row so edits to the customer flow through. Once the
+  // invoice leaves draft state the snapshot is frozen for legal integrity.
+  const existing = await prisma.invoice.findFirst({
+    where: { id, userId },
+    select: { status: true, customerId: true },
+  })
+  if (existing && existing.status === "draft") {
+    const targetCustomerId = (rest as { customerId?: string }).customerId ?? existing.customerId
+    const snap = await prisma.customer.findFirst({
+      where: { id: targetCustomerId, userId },
+      select: {
+        name: true,
+        email: true,
+        contactPerson: true,
+        street: true,
+        houseNumber: true,
+        bus: true,
+        zipCode: true,
+        city: true,
+        country: true,
+        vatNumber: true,
+        peppolId: true,
+      },
+    })
+    if (snap) {
+      updateData.customerName = snap.name
+      updateData.customerEmail = snap.email
+      updateData.customerContactPerson = snap.contactPerson
+      updateData.customerStreet = snap.street
+      updateData.customerHouseNumber = snap.houseNumber
+      updateData.customerBus = snap.bus
+      updateData.customerZipCode = snap.zipCode
+      updateData.customerCity = snap.city
+      updateData.customerCountry = snap.country
+      updateData.customerVatNumber = snap.vatNumber
+      updateData.customerPeppolId = snap.peppolId
+    }
   }
 
   return prisma.invoice.update({
