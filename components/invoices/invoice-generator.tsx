@@ -266,6 +266,12 @@ export function InvoiceGenerator({
   const total = useMemo(() => getInvoiceTotalAmount(formData), [formData])
   const isPeppol = deliveryMethod === "peppol"
   const isAuthorRightsInvoice = isAuthorRightsMode(formData.invoiceMode)
+  const activePeppolEnvironment = getActiveRecommandEnvironment(settings)
+  const activePeppolEnvironmentLabel = getRecommandEnvironmentLabel(activePeppolEnvironment)
+  const peppolEnvironmentTone =
+    activePeppolEnvironment === "production"
+      ? "border-success/30 bg-success/10 text-success"
+      : "border-warning/30 bg-warning/10 text-warning"
   const deliveryCompliance = useMemo(
     () =>
       classifyInvoiceDeliveryRequirement({
@@ -641,6 +647,11 @@ export function InvoiceGenerator({
                         ? "PEPPOL-validatie actief"
                         : "E-mail met PDF-bijlage"}
                   </div>
+                  {isPeppol && (
+                    <div className={`mt-3 inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${peppolEnvironmentTone}`}>
+                      PEPPOL environment: {activePeppolEnvironmentLabel}
+                    </div>
+                  )}
                 </section>
               </div>
             )}
@@ -753,6 +764,11 @@ export function InvoiceGenerator({
                   {primaryActionLabel}
                 </Button>
               </div>
+              {isPeppol && (
+                <p className="mt-2 text-center text-xs text-muted-foreground">
+                  Active PEPPOL environment: <span className="font-medium">{activePeppolEnvironmentLabel}</span>
+                </p>
+              )}
               <p className="mt-2 text-center text-xs text-muted-foreground">
                 &#8984;S concept opslaan &middot; &#8984;&#9166; verzenden
               </p>

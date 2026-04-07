@@ -247,6 +247,9 @@ model Customer {
 
   vatNumber       String?  @map("vat_number")
   peppolId        String?  @map("peppol_id")
+  peppolVerified  Boolean? @map("peppol_verified")
+  peppolVerifiedAt DateTime? @map("peppol_verified_at")
+  recommandDirectorySource String? @map("recommand_directory_source")
   invoiceDeliveryMethod String @default("manual_choice") @map("invoice_delivery_method")
   defaultRate     Decimal? @map("default_rate")
   defaultCurrency String?  @default("EUR") @map("default_currency")

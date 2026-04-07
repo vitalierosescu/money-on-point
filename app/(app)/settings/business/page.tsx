@@ -11,7 +11,7 @@ export default async function BusinessSettingsPage() {
     <>
       <div className="w-full max-w-3xl space-y-space-6">
         <BusinessSettingsForm user={user} />
-        <PeppolSettingsForm settings={settings} />
+        <PeppolSettingsForm user={user} settings={settings} />
       </div>
     </>
   )

@@ -1,17 +1,43 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Customer } from "@/prisma/client"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
-import { createCustomerAction } from "@/app/(app)/customers/actions"
+import {
+  createCustomerAction,
+  searchRecommandDirectoryAction,
+  lookupRecommandByVatAction,
+  verifyRecommandRecipientAction,
+} from "@/app/(app)/customers/actions"
 import { CustomerEditPanel } from "@/components/customers/customer-edit-panel"
+
+type DirectoryHit = {
+  peppolAddress: string
+  name: string
+  formattedNumber: string | null
+  countryCode: string | null
+  supportsInvoice: boolean
+}
+
+type DirectoryState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "results"; hits: DirectoryHit[] }
+  | { kind: "error"; message: string }
+  | { kind: "disabled" }
 
 type CustomerPickerProps = {
   customers: Customer[]
   selectedCustomer: Customer | null
   onSelect: (customer: Customer | null) => void
+}
+
+const VAT_LIKE_REGEX = /^[A-Z]{0,2}\s*\d[\d\s.\-]{7,}$/i
+
+function looksLikeVat(input: string): boolean {
+  return VAT_LIKE_REGEX.test(input.trim())
 }
 
 export function CustomerPicker({ customers, selectedCustomer, onSelect }: CustomerPickerProps) {
@@ -29,7 +55,15 @@ export function CustomerPicker({ customers, selectedCustomer, onSelect }: Custom
     zipCode: "",
     city: "",
     email: "",
+    peppolVerified: false as boolean | null,
+    recommandDirectorySource: null as null | "directory" | "manual",
   })
+
+  // Directory search state
+  const [directoryState, setDirectoryState] = useState<DirectoryState>({ kind: "idle" })
+  const [pickingPeppolAddress, setPickingPeppolAddress] = useState<string | null>(null)
+  const searchSeqRef = useRef(0)
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     setLocalCustomers(customers)
@@ -40,6 +74,100 @@ export function CustomerPicker({ customers, selectedCustomer, onSelect }: Custom
       c.name.toLowerCase().includes(search.toLowerCase()) ||
       (c.email?.toLowerCase().includes(search.toLowerCase()))
   )
+
+  // ---------- Directory search ----------
+
+  const runDirectorySearch = (rawValue: string) => {
+    const value = rawValue.trim()
+    const seq = ++searchSeqRef.current
+
+    if (value.length < 3) {
+      setDirectoryState({ kind: "idle" })
+      return
+    }
+
+    setDirectoryState({ kind: "loading" })
+
+    const isVat = looksLikeVat(value)
+    const promise = isVat
+      ? lookupRecommandByVatAction(value).then((result) => {
+          if (!result.success) return result
+          return {
+            success: true as const,
+            data: { hits: result.data.hit ? [result.data.hit] : [] },
+          }
+        })
+      : searchRecommandDirectoryAction(value)
+
+    promise.then((result) => {
+      if (seq !== searchSeqRef.current) return // stale
+      if (!result.success) {
+        if (/not configured/i.test(result.error)) {
+          setDirectoryState({ kind: "disabled" })
+        } else {
+          setDirectoryState({ kind: "error", message: result.error })
+        }
+        return
+      }
+      const hits: DirectoryHit[] = result.data.hits.map((h) => ({
+        peppolAddress: h.peppolAddress,
+        name: h.name,
+        formattedNumber: h.formattedNumber,
+        countryCode: h.countryCode,
+        supportsInvoice: h.supportsInvoice,
+      }))
+      setDirectoryState({ kind: "results", hits })
+    })
+  }
+
+  const handleNameChange = (value: string) => {
+    setNewCustomer((p) => ({ ...p, name: value, peppolVerified: false, recommandDirectorySource: null }))
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+    searchTimerRef.current = setTimeout(() => runDirectorySearch(value), 300)
+  }
+
+  const handleSelectHit = async (hit: DirectoryHit) => {
+    // Local duplicate guard
+    const existing = localCustomers.find(
+      (c) => c.vatNumber && hit.formattedNumber && c.vatNumber.replace(/\s/g, "").toUpperCase() === hit.formattedNumber.toUpperCase()
+    )
+    if (existing) {
+      onSelect(existing)
+      return
+    }
+
+    setPickingPeppolAddress(hit.peppolAddress)
+    try {
+      const verifyResult = await verifyRecommandRecipientAction(hit.peppolAddress)
+      const peppolReachable = verifyResult.success
+        ? verifyResult.data.verification.isValid &&
+          (verifyResult.data.documentSupport?.isValid ?? hit.supportsInvoice)
+        : hit.supportsInvoice
+
+      const vies = verifyResult.success ? verifyResult.data.vies : null
+      const canonicalName = vies?.name
+        ?? (verifyResult.success ? verifyResult.data.verification.companyName ?? hit.name : hit.name)
+      const country = verifyResult.success
+        ? verifyResult.data.verification.countryCode ?? hit.countryCode
+        : hit.countryCode
+
+      setNewCustomer((p) => ({
+        ...p,
+        name: canonicalName,
+        country: country ?? p.country,
+        vatNumber: hit.formattedNumber ?? p.vatNumber,
+        street: vies?.street ?? p.street,
+        houseNumber: vies?.houseNumber ?? p.houseNumber,
+        zipCode: vies?.postalCode ?? p.zipCode,
+        city: vies?.city ?? p.city,
+        peppolVerified: peppolReachable,
+        recommandDirectorySource: "directory",
+      }))
+      setDirectoryState({ kind: "idle" })
+    } finally {
+      setPickingPeppolAddress(null)
+    }
+  }
 
   const handleCreate = async () => {
     if (!newCustomer.name) return
@@ -54,6 +182,9 @@ export function CustomerPicker({ customers, selectedCustomer, onSelect }: Custom
         zipCode: newCustomer.zipCode || null,
         city: newCustomer.city || null,
         email: newCustomer.email || null,
+        peppolVerified: newCustomer.peppolVerified ?? null,
+        peppolVerifiedAt: newCustomer.peppolVerified ? new Date() : null,
+        recommandDirectorySource: newCustomer.recommandDirectorySource ?? "manual",
       })
       if (result.success && result.data) {
         setLocalCustomers((prev) =>
@@ -160,13 +291,85 @@ export function CustomerPicker({ customers, selectedCustomer, onSelect }: Custom
       {activeTab === "new" && (
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label>Name *</Label>
+            <Label>Company name or VAT number</Label>
             <Input
               value={newCustomer.name}
-              onChange={(e) => setNewCustomer((p) => ({ ...p, name: e.target.value }))}
-              placeholder="Company or person name"
+              onChange={(e) => handleNameChange(e.target.value)}
+              placeholder="Type at least 3 characters or paste a VAT number"
+              autoComplete="off"
             />
+
+            {/* Directory results */}
+            {directoryState.kind === "loading" && (
+              <div className="border rounded-lg divide-y">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="p-3 animate-pulse">
+                    <div className="h-3 w-32 bg-muted rounded mb-2" />
+                    <div className="h-2 w-48 bg-muted rounded" />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {directoryState.kind === "results" && directoryState.hits.length > 0 && (
+              <div className="border rounded-lg divide-y max-h-64 overflow-y-auto">
+                {directoryState.hits.map((hit) => {
+                  const isPicking = pickingPeppolAddress === hit.peppolAddress
+                  return (
+                    <button
+                      key={hit.peppolAddress}
+                      type="button"
+                      disabled={isPicking}
+                      onClick={() => handleSelectHit(hit)}
+                      className="w-full text-left p-3 hover:bg-muted disabled:opacity-50 flex items-start gap-3"
+                    >
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold">
+                        {hit.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{hit.name}</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {hit.formattedNumber ?? hit.peppolAddress}
+                        </p>
+                      </div>
+                      {hit.supportsInvoice && (
+                        <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                          Peppol
+                        </span>
+                      )}
+                      {isPicking && (
+                        <span className="shrink-0 text-xs text-muted-foreground">Verifying…</span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
+            {directoryState.kind === "results" && directoryState.hits.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                No matches in the Peppol directory. Fill in the details manually below.
+              </p>
+            )}
+
+            {directoryState.kind === "error" && (
+              <p className="text-xs text-amber-600">
+                Couldn't reach the Peppol directory ({directoryState.message}). Fill in the details manually below.
+              </p>
+            )}
+
+            {newCustomer.recommandDirectorySource === "directory" && newCustomer.peppolVerified && (
+              <p className="text-xs text-emerald-700">
+                ✓ Verified Peppol recipient — invoice delivery supported.
+              </p>
+            )}
+            {newCustomer.recommandDirectorySource === "directory" && !newCustomer.peppolVerified && (
+              <p className="text-xs text-amber-600">
+                Found in directory but Peppol invoice delivery not confirmed. Email delivery still works.
+              </p>
+            )}
           </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Country</Label>

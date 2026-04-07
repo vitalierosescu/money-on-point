@@ -18,6 +18,9 @@ export type CustomerData = {
   country?: string | null
   vatNumber?: string | null
   peppolId?: string | null
+  peppolVerified?: boolean | null
+  peppolVerifiedAt?: Date | null
+  recommandDirectorySource?: string | null
   invoiceDeliveryMethod?: string | null
   defaultRate?: number | null
   defaultCurrency?: string | null

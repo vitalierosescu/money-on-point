@@ -11,6 +11,11 @@ import { userFormSchema } from "@/forms/users"
 import { ActionState } from "@/lib/actions"
 import { getCurrentUser } from "@/lib/auth"
 import { normalizeFieldOptionsInput } from "@/lib/fields"
+import {
+  getRecommandSyncSummary,
+  syncActiveRecommandCompanyProfile,
+} from "@/lib/recommand-companies"
+import { getActiveRecommandEnvironment } from "@/lib/recommand-settings"
 import { uploadStaticImage } from "@/lib/uploads"
 import { codeFromName, randomHexColor } from "@/lib/utils"
 import { createCategory, deleteCategory, updateCategory } from "@/models/categories"
@@ -19,6 +24,7 @@ import { createField, deleteField, updateField } from "@/models/fields"
 import { createProject, deleteProject, updateProject } from "@/models/projects"
 import { SettingsMap, updateSettings } from "@/models/settings"
 import { updateUser } from "@/models/users"
+import { prisma } from "@/lib/db"
 import { Prisma, User } from "@/prisma/client"
 import { revalidatePath, revalidateTag } from "next/cache"
 import path from "path"
@@ -45,6 +51,46 @@ export async function saveSettingsAction(
   revalidatePath("/settings")
   revalidatePath("/settings/integrations")
   return { success: true }
+}
+
+export async function syncRecommandCompanyProfileAction(
+  prevState: ActionState<{ summary: string }> | null
+): Promise<ActionState<{ summary: string }>> {
+  void prevState
+  const user = await getCurrentUser()
+  const settings = Object.fromEntries(
+    (
+      await prisma.setting.findMany({
+        where: { userId: user.id },
+      })
+    ).map((setting: { code: string; value: string | null }) => [setting.code, setting.value || ""])
+  ) as SettingsMap
+
+  try {
+    const result = await syncActiveRecommandCompanyProfile(user, settings)
+    const activeEnvironment = getActiveRecommandEnvironment(settings)
+    const companyIdSettingCode = `recommand_${activeEnvironment}_company_id`
+
+    if (settings[companyIdSettingCode] !== result.companyId) {
+      await updateSettings(user.id, companyIdSettingCode, result.companyId)
+    }
+
+    revalidateTag(`settings:${user.id}`)
+    revalidatePath("/settings")
+    revalidatePath("/settings/business")
+
+    return {
+      success: true,
+      data: {
+        summary: getRecommandSyncSummary(result),
+      },
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to sync the active Recommand company.",
+    }
+  }
 }
 
 export async function saveProfileAction(

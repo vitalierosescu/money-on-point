@@ -12,6 +12,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { Textarea } from "@/components/ui/textarea"
 import { Customer } from "@/prisma/client"
 import { useState } from "react"
+import { RecommandDirectorySearch } from "@/components/customers/recommand-directory-search"
 
 interface CustomerEditPanelProps {
   customer?: Customer | null
@@ -23,6 +24,20 @@ export function CustomerEditPanel({ customer, trigger, onSuccess }: CustomerEdit
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Fields the Peppol directory can prefill — controlled so picks override defaults.
+  const [name, setName] = useState(customer?.name ?? "")
+  const [country, setCountry] = useState(customer?.country ?? "Belgium")
+  const [vatNumber, setVatNumber] = useState(customer?.vatNumber ?? "")
+  const [peppolId, setPeppolId] = useState(customer?.peppolId ?? "")
+  const [street, setStreet] = useState(customer?.street ?? "")
+  const [houseNumber, setHouseNumber] = useState(customer?.houseNumber ?? "")
+  const [zipCode, setZipCode] = useState(customer?.zipCode ?? "")
+  const [city, setCity] = useState(customer?.city ?? "")
+  const [peppolVerified, setPeppolVerified] = useState<boolean | null>(
+    customer?.peppolVerified ?? null
+  )
+  const [directoryPicked, setDirectoryPicked] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -38,20 +53,25 @@ export function CustomerEditPanel({ customer, trigger, onSuccess }: CustomerEdit
       : []
 
     const data = {
-      name: fd.get("name") as string,
+      name,
       email: (fd.get("email") as string) || null,
       billingEmails,
       phone: (fd.get("phone") as string) || null,
       website: (fd.get("website") as string) || null,
       contactPerson: (fd.get("contactPerson") as string) || null,
-      street: (fd.get("street") as string) || null,
-      houseNumber: (fd.get("houseNumber") as string) || null,
+      street: street || null,
+      houseNumber: houseNumber || null,
       bus: (fd.get("bus") as string) || null,
-      zipCode: (fd.get("zipCode") as string) || null,
-      city: (fd.get("city") as string) || null,
-      country: (fd.get("country") as string) || "Belgium",
-      vatNumber: (fd.get("vatNumber") as string) || null,
-      peppolId: (fd.get("peppolId") as string) || null,
+      zipCode: zipCode || null,
+      city: city || null,
+      country: country || "Belgium",
+      vatNumber: vatNumber || null,
+      peppolId: peppolId || null,
+      peppolVerified,
+      peppolVerifiedAt: directoryPicked && peppolVerified ? new Date() : customer?.peppolVerifiedAt ?? null,
+      recommandDirectorySource: directoryPicked
+        ? "directory"
+        : customer?.recommandDirectorySource ?? "manual",
       invoiceDeliveryMethod: normalizeCustomerInvoiceDeliveryMethod(fd.get("invoiceDeliveryMethod") as string),
       defaultCurrency: (fd.get("defaultCurrency") as string) || null,
       note: (fd.get("note") as string) || null,
@@ -89,10 +109,32 @@ export function CustomerEditPanel({ customer, trigger, onSuccess }: CustomerEdit
         </SheetHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 mt-6">
+          <RecommandDirectorySearch
+            initialQuery={customer?.name ?? ""}
+            onPick={(pick) => {
+              setName(pick.name)
+              if (pick.country) setCountry(pick.country)
+              if (pick.vatNumber) setVatNumber(pick.vatNumber)
+              if (pick.peppolId) setPeppolId(pick.peppolId)
+              if (pick.street) setStreet(pick.street)
+              if (pick.houseNumber) setHouseNumber(pick.houseNumber)
+              if (pick.zipCode) setZipCode(pick.zipCode)
+              if (pick.city) setCity(pick.city)
+              setPeppolVerified(pick.peppolVerified)
+              setDirectoryPicked(true)
+            }}
+          />
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="name">Name *</Label>
-              <Input id="name" name="name" defaultValue={customer?.name ?? ""} required />
+              <Input
+                id="name"
+                name="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
@@ -124,11 +166,21 @@ export function CustomerEditPanel({ customer, trigger, onSuccess }: CustomerEdit
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="street">Street</Label>
-              <Input id="street" name="street" defaultValue={customer?.street ?? ""} />
+              <Input
+                id="street"
+                name="street"
+                value={street}
+                onChange={(e) => setStreet(e.target.value)}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="houseNumber">House Number</Label>
-              <Input id="houseNumber" name="houseNumber" defaultValue={customer?.houseNumber ?? ""} />
+              <Input
+                id="houseNumber"
+                name="houseNumber"
+                value={houseNumber}
+                onChange={(e) => setHouseNumber(e.target.value)}
+              />
             </div>
           </div>
 
@@ -139,29 +191,55 @@ export function CustomerEditPanel({ customer, trigger, onSuccess }: CustomerEdit
             </div>
             <div className="space-y-2">
               <Label htmlFor="zipCode">ZIP Code</Label>
-              <Input id="zipCode" name="zipCode" defaultValue={customer?.zipCode ?? ""} />
+              <Input
+                id="zipCode"
+                name="zipCode"
+                value={zipCode}
+                onChange={(e) => setZipCode(e.target.value)}
+              />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="city">City</Label>
-              <Input id="city" name="city" defaultValue={customer?.city ?? ""} />
+              <Input
+                id="city"
+                name="city"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="country">Country</Label>
-              <Input id="country" name="country" defaultValue={customer?.country ?? "Belgium"} />
+              <Input
+                id="country"
+                name="country"
+                value={country}
+                onChange={(e) => setCountry(e.target.value)}
+              />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="vatNumber">VAT Number</Label>
-              <Input id="vatNumber" name="vatNumber" defaultValue={customer?.vatNumber ?? ""} />
+              <Input
+                id="vatNumber"
+                name="vatNumber"
+                value={vatNumber}
+                onChange={(e) => setVatNumber(e.target.value)}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="peppolId">PEPPOL ID</Label>
-              <Input id="peppolId" name="peppolId" defaultValue={customer?.peppolId ?? ""} placeholder="0208:0123456789" />
+              <Input
+                id="peppolId"
+                name="peppolId"
+                value={peppolId}
+                onChange={(e) => setPeppolId(e.target.value)}
+                placeholder="0208:0123456789"
+              />
             </div>
           </div>
 

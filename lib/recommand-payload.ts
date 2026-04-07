@@ -22,6 +22,19 @@ function extractIban(value?: string | null): string | null {
   return match?.[0] ?? null
 }
 
+function normalizeOptionalText(value?: string | null): string | undefined {
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : undefined
+}
+
+function buildStreetAddress(street?: string | null, houseNumber?: string | null, extraLine?: string | null) {
+  const primaryLine = [street?.trim(), houseNumber?.trim()].filter(Boolean).join(" ").trim()
+  return {
+    street: primaryLine || normalizeOptionalText(street),
+    street2: normalizeOptionalText(extraLine),
+  }
+}
+
 function getPeppolVatCategory(invoice: Prisma.InvoiceGetPayload<{ include: { customer: true } }>, taxRate: number) {
   if (invoice.isVatReversed) {
     return { category: "AE", percentage: "0.00" }
@@ -40,6 +53,11 @@ export function buildRecommandInvoicePayload(
   invoice: Prisma.InvoiceGetPayload<{ include: { customer: true } }>,
   attachments?: RecommandAttachment[]
 ) {
+  const buyerAddress = buildStreetAddress(
+    invoice.customer.street,
+    invoice.customer.houseNumber,
+    invoice.customer.bus
+  )
   const items = Array.isArray(invoice.items) ? invoice.items : []
   const taxes = Array.isArray(invoice.taxes) ? invoice.taxes : []
   const taxRate =
@@ -73,12 +91,14 @@ export function buildRecommandInvoicePayload(
     invoiceNumber: invoice.invoiceNumber,
     issueDate: formatDateForApi(invoice.issuedAt),
     dueDate: formatDateForApi(invoice.dueDate),
-    note: invoice.notes ?? undefined,
-    buyerReference: invoice.poNumber ?? invoice.paymentReference ?? undefined,
+    note: normalizeOptionalText(invoice.notes),
+    buyerReference: normalizeOptionalText(invoice.customer.contactPerson) ?? invoice.invoiceNumber,
+    purchaseOrderReference: normalizeOptionalText(invoice.poNumber),
     buyer: {
       vatNumber: invoice.customer.vatNumber,
       name: invoice.customer.name,
-      street: invoice.customer.street,
+      street: buyerAddress.street,
+      street2: buyerAddress.street2,
       city: invoice.customer.city,
       postalZone: invoice.customer.zipCode,
       country: normalizeCountryCode(invoice.customer.country),

@@ -26,15 +26,19 @@ export function InvoicePreview({ templateData: d, className }: InvoicePreviewPro
         <div>
           {isPresent(d.businessLogo) && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={d.businessLogo!} alt="Logo" className="h-12 mb-2 object-contain" />
+            <img src={d.businessLogo!} alt="Logo" className="mb-2 h-8 object-contain" />
           )}
           {isPresent(d.companyDetails) && (
             <div className="text-caption text-muted-foreground whitespace-pre-line">{d.companyDetails}</div>
           )}
         </div>
         <div className="text-right">
-          <div className="text-title font-bold text-foreground">{d.title || "Factuur"}</div>
-          <div className="text-muted-foreground text-caption mt-1">{d.invoiceNumber}</div>
+          <div className="font-heading text-xl font-semibold tracking-[-0.02em] text-foreground">
+            {d.title || "Factuur"}
+          </div>
+          <div className="mt-1 text-caption text-muted-foreground">
+            Factuurnummer: <span className="font-mono">{d.invoiceNumber || "\u2014"}</span>
+          </div>
         </div>
       </div>
 
