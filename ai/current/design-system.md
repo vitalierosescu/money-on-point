@@ -1,0 +1,57 @@
+# Design System
+
+## Source Of Truth
+
+- Tokens: `app/globals.css`
+- Tailwind mapping: `tailwind.config.ts`
+- Shared primitives: `components/ui/*`
+
+## Visual Direction
+
+The authenticated app currently follows a Recommand-influenced system:
+- warm off-white page background
+- dark forest-green primary actions
+- restrained warm neutrals
+- Rethink Sans for primary typography
+- light mode only
+
+## Core Rules
+
+- Reuse shared UI primitives from `components/ui` before creating local variants.
+- Cards are white surfaces with rounded corners by default.
+- Borders are structural, not decorative.
+- Shadows are minimal. Buttons keep a subtle shadow; most other surfaces do not.
+- Muted text must remain readable. Prefer semantic tokens over hard-coded grays.
+
+## Tokens
+
+- Colors, spacing, typography, radii, and shadows must come from `app/globals.css`.
+- Tailwind aliases must map back to those CSS variables in `tailwind.config.ts`.
+- Do not scatter magic values across pages.
+
+## Typography
+
+- Primary family: Rethink Sans
+- Headings use `font-heading` and tighter tracking
+- Body copy should stay readable and not oversized in form controls
+- Monospace stays reserved for amounts, invoice numbers, IDs, and tabular data
+
+## Component Rules
+
+- Buttons: use shared variants in `components/ui/button.tsx`
+- Inputs/selects/textarea: use shared form primitives; keep control text around `text-base`
+- Cards/stat cards: use white card surfaces with rounded corners
+- Tables: use shared table primitives; avoid one-off wrappers unless necessary
+- Section labels: use the shared small uppercase label pattern
+
+## Interaction Rules
+
+- Favor `transition-colors`
+- Use border-color changes for hover where appropriate
+- Avoid decorative motion, parallax, and gratuitous animation
+
+## What To Avoid
+
+- Do not reintroduce the older Linear/Vercel monochrome spec as source of truth
+- Do not create page-specific ad hoc button/input/card variants when a shared primitive can be extended
+- Do not add a second styling system

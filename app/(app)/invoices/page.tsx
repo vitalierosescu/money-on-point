@@ -2,6 +2,8 @@ import { InvoiceList } from "@/components/invoices/invoice-list"
 import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/ui/page-header"
 import { getCurrentUser } from "@/lib/auth"
+import { t } from "@/lib/i18n"
+import { getUiLocale } from "@/lib/locale"
 import { getInvoices, InvoiceFilters } from "@/models/invoices"
 import { getSettings } from "@/models/settings"
 import {
@@ -26,6 +28,7 @@ export default async function InvoicesPage({
   const filters = await searchParams
   const user = await getCurrentUser()
   const [invoices, settings] = await Promise.all([getInvoices(user.id, filters), getSettings(user.id)])
+  const locale = getUiLocale(settings)
   const activeRecommandEnvironment = getActiveRecommandEnvironment(settings)
   const hasRecommandCredentials = hasConfiguredRecommandCredentials(settings, activeRecommandEnvironment)
   const recommandEnvironmentLabel = getRecommandEnvironmentLabel(activeRecommandEnvironment)
@@ -33,13 +36,13 @@ export default async function InvoicesPage({
   return (
     <>
       <PageHeader
-        title="Invoices"
+        title={t(locale, "invoices.title")}
         count={invoices.length}
         className="mb-space-6"
         actions={
           <Link href="/invoices/new">
             <Button>
-              <Plus /> New Invoice
+              <Plus /> {t(locale, "invoices.newInvoice")}
             </Button>
           </Link>
         }
@@ -47,6 +50,7 @@ export default async function InvoicesPage({
 
       <InvoiceList
         invoices={invoices}
+        locale={locale}
         hasRecommandCredentials={hasRecommandCredentials}
         recommandEnvironmentLabel={recommandEnvironmentLabel}
       />

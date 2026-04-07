@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "entrypoints": [
+    "ai/README.md",
+    "ai/current/product.md",
+    "ai/current/design-system.md",
+    "ai/current/architecture.md"
+  ],
+  "runtime_code": [
+    "ai/analyze.ts",
+    "ai/attachments.ts",
+    "ai/prompt.ts",
+    "ai/schema.ts",
+    "ai/providers/llmProvider.ts"
+  ],
+  "canonical": [
+    "ai/current/product.md",
+    "ai/current/features.md",
+    "ai/current/design-system.md",
+    "ai/current/architecture.md",
+    "ai/current/routing-and-ia.md",
+    "ai/current/data-model.md",
+    "ai/current/testing.md",
+    "ai/current/release.md",
+    "ai/current/integrations/peppol.md",
+    "ai/current/integrations/archie.md"
+  ],
+  "work_context": [
+    "ai/work/plans/active",
+    "ai/work/plans/completed",
+    "ai/work/reviews"
+  ],
+  "do_not_use_as_source_of_truth": [
+    ".impeccable.md",
+    ".superpowers",
+    ".claude/plans",
+    ".claude/specs",
+    ".claude/reviews"
+  ]
+}

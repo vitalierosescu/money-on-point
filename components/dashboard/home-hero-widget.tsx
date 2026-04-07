@@ -1,5 +1,6 @@
 import { UploadButton } from "@/components/files/upload-button"
 import { Button } from "@/components/ui/button"
+import { SectionLabel } from "@/components/ui/section-label"
 import { getRecommandEnvironmentLabel, type RecommandEnvironment } from "@/lib/recommand-settings"
 import { ArrowRight, FileStack, Receipt, Rocket, Settings2, Upload } from "lucide-react"
 import Link from "next/link"
@@ -37,8 +38,12 @@ export function HomeHeroWidget({
       : "PEPPOL is active in Production and ready for real live sending."
 
   const peppolTone = !activePeppolReady || activePeppolEnvironment === "playground"
-    ? "border-amber-200 bg-amber-50 text-amber-900"
-    : "border-emerald-200 bg-emerald-50 text-emerald-900"
+    ? "border-warning/40"
+    : "border-success/40"
+
+  const peppolAccent = !activePeppolReady || activePeppolEnvironment === "playground"
+    ? "text-warning"
+    : "text-success"
 
   const deskStats = [
     { label: "Unsorted", value: unsortedCount, href: "/unsorted" },
@@ -48,57 +53,59 @@ export function HomeHeroWidget({
   ]
 
   return (
-    <section className="rounded-2xl border bg-gradient-to-br from-stone-50 via-white to-emerald-50/60 p-6">
+    <section className="rounded-card border border-border bg-background bg-recommand-texture p-6">
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_360px] xl:items-start">
         <div>
-          <div className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Today&apos;s desk</div>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-balance">
+          <SectionLabel>Today&apos;s desk</SectionLabel>
+          <h1 className="mt-3 text-display font-semibold font-heading tracking-[-0.02em] text-balance">
             Keep bookkeeping moving, {firstName}.
           </h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
+          <p className="mt-3 max-w-2xl text-body text-muted-foreground">
             Start with uploads and open items first, then move into invoices, files, and reports. This page is your
             shortest path through the day instead of a passive dashboard.
           </p>
 
           <div className="mt-5 flex flex-wrap gap-3">
-            <UploadButton className="h-11 rounded-full px-5">
+            <UploadButton className="h-11 px-5">
               <Upload className="mr-2 h-4 w-4" />
               Upload documents
             </UploadButton>
             <Link href="/invoices/new">
-              <Button variant="outline" className="h-11 rounded-full px-5">
+              <Button variant="secondary" className="h-11 px-5">
                 <Receipt className="mr-2 h-4 w-4" />
                 New invoice
               </Button>
             </Link>
             <Link href="/files">
-              <Button variant="outline" className="h-11 rounded-full px-5">
+              <Button variant="secondary" className="h-11 px-5">
                 <FileStack className="mr-2 h-4 w-4" />
                 Open files
               </Button>
             </Link>
             <Link href="/settings/business">
-              <Button variant="outline" className="h-11 rounded-full px-5">
+              <Button variant="secondary" className="h-11 px-5">
                 <Settings2 className="mr-2 h-4 w-4" />
                 Business settings
               </Button>
             </Link>
           </div>
 
-          <div className={`mt-5 rounded-xl border px-4 py-3 text-sm ${peppolTone}`}>
-            <div className="font-medium">PEPPOL status</div>
-            <div className="mt-1">{peppolMessage}</div>
-            <div className="mt-2 text-xs opacity-80">
+          <div className={`mt-5 rounded-card border px-4 py-3 text-body ${peppolTone}`}>
+            <div className={`font-medium ${peppolAccent}`}>PEPPOL status</div>
+            <div className="mt-1 text-foreground">{peppolMessage}</div>
+            <div className="mt-2 text-caption text-muted-foreground">
               Inbound PEPPOL sync is still not built. TaxHacker currently supports outbound sending only.
             </div>
           </div>
         </div>
 
-        <div className="rounded-2xl border bg-background/90 p-4 shadow-sm">
+        <div className="rounded-card border border-border bg-background p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-xs uppercase tracking-[0.22em] text-muted-foreground">Desk status</div>
-              <h2 className="mt-1 text-lg font-semibold">What needs attention</h2>
+              <SectionLabel>Desk status</SectionLabel>
+              <h2 className="mt-1 text-subtitle font-semibold font-heading tracking-[-0.02em]">
+                What needs attention
+              </h2>
             </div>
             <Rocket className="h-5 w-5 text-muted-foreground" />
           </div>
@@ -108,15 +115,15 @@ export function HomeHeroWidget({
               <Link
                 key={item.label}
                 href={item.href}
-                className="rounded-xl border bg-muted/20 px-4 py-3 transition-colors hover:bg-muted/40"
+                className="rounded-card border border-border px-4 py-3 transition-colors hover:border-primary"
               >
-                <div className="text-xs uppercase tracking-wide text-muted-foreground">{item.label}</div>
-                <div className="mt-2 text-2xl font-semibold tabular-nums">{item.value}</div>
+                <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{item.label}</div>
+                <div className="mt-2 text-2xl font-semibold font-heading tabular-nums">{item.value}</div>
               </Link>
             ))}
           </div>
 
-          <div className="mt-4 rounded-xl border bg-muted/20 p-4 text-sm text-muted-foreground">
+          <div className="mt-4 rounded-card border border-border p-4 text-body text-muted-foreground">
             <div className="font-medium text-foreground">Suggested next move</div>
             <div className="mt-1">
               {unsortedCount > 0
@@ -139,10 +146,10 @@ export function HomeHeroWidget({
                       ? "/expenses"
                       : "/reports"
               }
-              className="mt-3 inline-flex items-center gap-1 font-medium text-foreground"
+              className="group mt-3 inline-flex items-center gap-1 font-medium text-foreground transition-colors hover:text-primary"
             >
               Open it now
-              <ArrowRight className="h-4 w-4" />
+              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
             </Link>
           </div>
         </div>

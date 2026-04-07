@@ -1,4 +1,5 @@
 import { UI_LOCALES } from "@/lib/locale"
+import { normalizeFieldOptionsInput } from "@/lib/fields"
 import { randomHexColor } from "@/lib/utils"
 import { RECOMMAND_ENVIRONMENTS } from "@/lib/recommand-settings"
 import { z } from "zod"
@@ -44,6 +45,13 @@ export const settingsFormSchema = z.object({
   recommand_production_company_id: z.string().optional(),
   recommand_production_api_key: z.string().optional(),
   recommand_production_api_secret: z.string().optional(),
+  archie_enabled: z.string().optional(),
+  archie_client_id: z.string().optional(),
+  archie_client_secret: z.string().optional(),
+  archie_webhook_secret: z.string().optional(),
+  archie_webhook_target_url: z.string().optional(),
+  archie_space_domain: z.string().optional(),
+  archie_group_uuids: z.string().optional(),
 })
 
 export const currencyFormSchema = z.object({
@@ -63,11 +71,21 @@ export const categoryFormSchema = z.object({
   color: z.string().max(7).default(randomHexColor()).nullable().optional(),
 })
 
-export const fieldFormSchema = z.object({
-  name: z.string().max(128),
-  type: z.string().max(128).default("string"),
-  llm_prompt: z.string().max(512).nullable().optional(),
-  isVisibleInList: z.boolean().optional(),
-  isVisibleInAnalysis: z.boolean().optional(),
-  isRequired: z.boolean().optional(),
-})
+export const fieldFormSchema = z
+  .object({
+    name: z.string().max(128),
+    type: z.enum(["string", "number", "boolean", "single_select"]).default("string"),
+    llm_prompt: z.string().max(512).nullable().optional(),
+    options: z.union([z.string(), z.array(z.string()), z.null()]).optional(),
+    isVisibleInList: z.boolean().optional(),
+    isVisibleInAnalysis: z.boolean().optional(),
+    isRequired: z.boolean().optional(),
+  })
+  .transform((data) => ({
+    ...data,
+    options: normalizeFieldOptionsInput(data.type, data.options),
+  }))
+  .refine((data) => data.type !== "single_select" || (data.options && data.options.length > 0), {
+    message: "Single-select fields need at least one option.",
+    path: ["options"],
+  })

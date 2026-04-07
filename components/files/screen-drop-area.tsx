@@ -119,17 +119,17 @@ export default function ScreenDropArea({ children }: { children: React.ReactNode
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
-          <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-xl text-center">
+          <div className="bg-card border border-border p-8 rounded-card shadow-popover text-center">
             <CloudUpload className="h-16 w-16 mx-auto mb-4 text-primary" />
             <h3 className="text-xl font-semibold mb-2">Drop Files to Upload</h3>
-            <p className="text-gray-600 dark:text-gray-400">Drop anywhere on the screen</p>
+            <p className="text-muted-foreground">Drop anywhere on the screen</p>
           </div>
         </div>
       )}
 
       {isUploading && (
         <div className="fixed inset-0 bg-opacity-20 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-xl text-center">
+          <div className="bg-card border border-border p-8 rounded-card shadow-popover text-center">
             <Loader2 className="h-16 w-16 mx-auto mb-4 text-primary animate-spin" />
             <h3 className="text-xl font-semibold mb-2">Uploading...</h3>
           </div>
@@ -138,10 +138,10 @@ export default function ScreenDropArea({ children }: { children: React.ReactNode
 
       {uploadError && (
         <div className="fixed inset-0 bg-opacity-20 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-xl text-center">
-            <AlertCircle className="h-16 w-16 mx-auto mb-4 text-red-500" />
+          <div className="bg-card border border-border p-8 rounded-card shadow-popover text-center">
+            <AlertCircle className="h-16 w-16 mx-auto mb-4 text-destructive" />
             <h3 className="text-xl font-semibold mb-2">Upload Error</h3>
-            <p className="text-gray-600 dark:text-gray-400">{uploadError}</p>
+            <p className="text-muted-foreground">{uploadError}</p>
           </div>
         </div>
       )}

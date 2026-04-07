@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { getUiLocale } from "@/lib/locale"
 import { getCategories } from "@/models/categories"
 import { getCurrencies } from "@/models/currencies"
+import { getFields } from "@/models/fields"
 import { getFilesByTransactionId } from "@/models/files"
 import { getProjects } from "@/models/projects"
 import { getSettings } from "@/models/settings"
@@ -23,11 +24,12 @@ export default async function ExpenseDetailPage({
   const { id } = await params
   const user = await getCurrentUser()
 
-  const [expense, categories, projects, currencies, settings, files] = await Promise.all([
+  const [expense, categories, projects, currencies, fields, settings, files] = await Promise.all([
     getTransactionById(id, user.id),
     getCategories(user.id),
     getProjects(user.id),
     getCurrencies(user.id),
+    getFields(user.id),
     getSettings(user.id),
     getFilesByTransactionId(id, user.id),
   ])
@@ -45,6 +47,7 @@ export default async function ExpenseDetailPage({
         categories={categories}
         projects={projects}
         currencies={currencies}
+        fields={fields}
         files={files}
         defaultCurrency={settings.default_currency || "EUR"}
         locale={locale}

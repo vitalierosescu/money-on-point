@@ -344,6 +344,37 @@ model AppData {
   @@map("app_data")
 }
 
+model ArchieCustomerMap {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @map("user_id") @db.Uuid
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  archieEntityType String   @map("archie_entity_type")
+  archieEntityId   String   @map("archie_entity_id")
+  customerId       String   @map("customer_id") @db.Uuid
+  customer         Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, archieEntityType, archieEntityId])
+  @@index([customerId])
+  @@map("archie_customer_maps")
+}
+
+model ArchieInvoiceMap {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  archieInvoiceId String  @map("archie_invoice_id")
+  invoiceId      String   @map("invoice_id") @db.Uuid
+  invoice        Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@unique([userId, archieInvoiceId])
+  @@index([invoiceId])
+  @@map("archie_invoice_maps")
+}
+
 model Progress {
   id        String   @id @default(uuid()) @db.Uuid
   userId    String   @map("user_id") @db.Uuid

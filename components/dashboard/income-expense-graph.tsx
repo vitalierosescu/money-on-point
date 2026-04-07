@@ -121,19 +121,19 @@ export function IncomeExpenseGraph({ data, defaultCurrency }: IncomeExpenseGraph
                   onClick={() => item.income > 0 && handleBarClick(item, "income")}
                 >
                   {/* Period label above income bars */}
-                  <div className="text-sm font-bold text-gray-700 break-words mb-2 text-center">
+                  <div className="text-sm font-bold text-muted-foreground break-words mb-2 text-center">
                     {formatPeriodLabel(item.period, item.date)}
                   </div>
 
                   {item.income > 0 && (
                     <>
                       {/* Income amount label */}
-                      <div className="text-xs font-semibold text-green-600 mb-1 break-all text-center">
+                      <div className="text-xs font-semibold text-success mb-1 break-all text-center">
                         {formatCurrency(item.income, defaultCurrency)}
                       </div>
                       {/* Income bar growing upward from bottom */}
                       <div
-                        className="w-full bg-gradient-to-t from-green-500 via-green-400 to-emerald-300 border border-green-500/50 rounded-t-lg shadow-sm hover:shadow-md transition-shadow duration-200 min-w-full"
+                        className="w-full bg-success/70 border border-success/40 rounded-t-md transition-colors duration-200 min-w-full"
                         style={{ height: `${incomeHeight}%` }}
                       />
                     </>
@@ -144,7 +144,7 @@ export function IncomeExpenseGraph({ data, defaultCurrency }: IncomeExpenseGraph
           </div>
 
           {/* X-axis line (center) */}
-          <div className="w-full border-t-2 border-gray-600" />
+          <div className="w-full border-t border-border" />
 
           {/* Expense section (bottom half) */}
           <div className="h-1/2 flex justify-center gap-1 px-2">
@@ -163,11 +163,11 @@ export function IncomeExpenseGraph({ data, defaultCurrency }: IncomeExpenseGraph
                     <>
                       {/* Expense bar growing downward from top */}
                       <div
-                        className="w-full bg-gradient-to-b from-red-500 via-red-400 to-rose-300 border border-red-500/50 rounded-b-lg shadow-sm hover:shadow-md transition-shadow duration-200 min-w-full"
+                        className="w-full bg-destructive/70 border border-destructive/40 rounded-b-md transition-colors duration-200 min-w-full"
                         style={{ height: `${expenseHeight}%` }}
                       />
                       {/* Expense amount label */}
-                      <div className="text-xs font-semibold text-red-600 mt-1 break-all text-center">
+                      <div className="text-xs font-semibold text-destructive mt-1 break-all text-center">
                         {formatCurrency(item.expenses, defaultCurrency)}
                       </div>
                     </>

@@ -45,6 +45,32 @@ export type TransactionPagination = {
   offset: number
 }
 
+export type ExpenseWithRelations = Prisma.TransactionGetPayload<{
+  include: { category: true; project: true }
+}>
+
+const STANDARD_TRANSACTION_KEYS = new Set([
+  "name",
+  "description",
+  "merchant",
+  "total",
+  "currencyCode",
+  "convertedTotal",
+  "convertedCurrencyCode",
+  "type",
+  "note",
+  "files",
+  "categoryCode",
+  "projectCode",
+  "issuedAt",
+  "text",
+  "customerId",
+  "status",
+  "dueDate",
+  "linkedExpenseId",
+  "taxAmount",
+])
+
 export const getTransactions = cache(
   async (
     userId: string,
@@ -124,7 +150,7 @@ export const getTransactions = cache(
 export const getExpenses = async (
   userId: string,
   filters?: { status?: string; search?: string; dateFrom?: string; dateTo?: string }
-): Promise<Transaction[]> => {
+): Promise<ExpenseWithRelations[]> => {
   // Auto-detect overdue: same pattern as getInvoices
   const now = new Date()
   await prisma.transaction.updateMany({
@@ -158,7 +184,7 @@ export const getExpenses = async (
 
   return prisma.transaction.findMany({
     where,
-    include: { category: true },
+    include: { category: true, project: true },
     orderBy: { issuedAt: "desc" },
   })
 }
@@ -174,7 +200,7 @@ export const updateExpenseStatus = async (
   })
 }
 
-export const getTransactionById = cache(async (id: string, userId: string): Promise<Transaction | null> => {
+export const getTransactionById = cache(async (id: string, userId: string): Promise<ExpenseWithRelations | null> => {
   return await prisma.transaction.findUnique({
     where: { id, userId },
     include: {
@@ -205,14 +231,27 @@ export const createTransaction = async (userId: string, data: TransactionData): 
 
 export const updateTransaction = async (id: string, userId: string, data: TransactionData): Promise<Transaction> => {
   const { standard, extra } = await splitTransactionDataExtraFields(data, userId)
+  const existing = await prisma.transaction.findUnique({
+    where: { id, userId },
+    select: { extra: true },
+  })
+  const existingExtra = ((existing?.extra as Record<string, unknown> | null) ?? {})
+  const nextExtra = {
+    ...existingExtra,
+    ...((extra as Record<string, unknown> | null) ?? {}),
+  }
+  const updateData = {
+    ...(standard as Prisma.TransactionUpdateInput),
+    extra: nextExtra as Prisma.InputJsonValue,
+  } as Prisma.TransactionUpdateInput
+
+  if ("items" in data) {
+    updateData.items = data.items ? (data.items as Prisma.InputJsonValue) : []
+  }
 
   return await prisma.transaction.update({
     where: { id, userId },
-    data: {
-      ...standard,
-      extra: extra,
-      items: data.items ? (data.items as Prisma.InputJsonValue) : [],
-    },
+    data: updateData,
   })
 }
 
@@ -271,6 +310,8 @@ const splitTransactionDataExtraFields = async (
       } else {
         standard[key] = value
       }
+    } else if (STANDARD_TRANSACTION_KEYS.has(key)) {
+      standard[key] = value
     }
   })
 

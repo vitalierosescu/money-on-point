@@ -4,12 +4,14 @@ import { PageHeader } from "@/components/ui/page-header"
 import { getCurrentUser } from "@/lib/auth"
 import { getFields } from "@/models/fields"
 import { Prisma } from "@/prisma/client"
+import { formatFieldOptions } from "@/lib/fields"
 
 export default async function FieldsSettingsPage() {
   const user = await getCurrentUser()
   const fields = await getFields(user.id)
   const fieldsWithActions = fields.map((field) => ({
     ...field,
+    options: formatFieldOptions(field.options),
     isEditable: true,
     isDeletable: field.isExtra,
   }))
@@ -29,10 +31,11 @@ export default async function FieldsSettingsPage() {
             key: "type",
             label: "Type",
             type: "select",
-            options: ["string", "number", "boolean"],
+            options: ["string", "number", "boolean", "single_select"],
             defaultValue: "string",
             editable: true,
           },
+          { key: "options", label: "Options (comma or line separated)", editable: true },
           { key: "llm_prompt", label: "LLM Prompt", editable: true },
           {
             key: "isVisibleInList",

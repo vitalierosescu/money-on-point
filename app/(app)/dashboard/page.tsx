@@ -106,9 +106,9 @@ async function DashboardUnsortedSection({ userId }: { userId: string }) {
 }
 
 function DashboardUnsortedFallback() {
-  return <Skeleton className="h-[260px] w-full rounded-xl" />
+  return <Skeleton className="h-[260px] w-full rounded-card" />
 }
 
 function DashboardStatsFallback() {
-  return <Skeleton className="h-[520px] w-full rounded-xl" />
+  return <Skeleton className="h-[520px] w-full rounded-card" />
 }

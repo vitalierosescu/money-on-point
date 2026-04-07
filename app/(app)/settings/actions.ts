@@ -10,6 +10,7 @@ import {
 import { userFormSchema } from "@/forms/users"
 import { ActionState } from "@/lib/actions"
 import { getCurrentUser } from "@/lib/auth"
+import { normalizeFieldOptionsInput } from "@/lib/fields"
 import { uploadStaticImage } from "@/lib/uploads"
 import { codeFromName, randomHexColor } from "@/lib/utils"
 import { createCategory, deleteCategory, updateCategory } from "@/models/categories"
@@ -42,6 +43,7 @@ export async function saveSettingsAction(
 
   revalidateTag(`settings:${user.id}`)
   revalidatePath("/settings")
+  revalidatePath("/settings/integrations")
   return { success: true }
 }
 
@@ -251,6 +253,7 @@ export async function addFieldAction(userId: string, data: Prisma.FieldCreateInp
     name: validatedForm.data.name,
     type: validatedForm.data.type,
     llm_prompt: validatedForm.data.llm_prompt,
+    options: normalizeFieldOptionsInput(validatedForm.data.type, validatedForm.data.options),
     isVisibleInList: validatedForm.data.isVisibleInList,
     isVisibleInAnalysis: validatedForm.data.isVisibleInAnalysis,
     isRequired: validatedForm.data.isRequired,
@@ -272,6 +275,7 @@ export async function editFieldAction(userId: string, code: string, data: Prisma
     name: validatedForm.data.name,
     type: validatedForm.data.type,
     llm_prompt: validatedForm.data.llm_prompt,
+    options: normalizeFieldOptionsInput(validatedForm.data.type, validatedForm.data.options),
     isVisibleInList: validatedForm.data.isVisibleInList,
     isVisibleInAnalysis: validatedForm.data.isVisibleInAnalysis,
     isRequired: validatedForm.data.isRequired,

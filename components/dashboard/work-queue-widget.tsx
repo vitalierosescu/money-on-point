@@ -36,11 +36,11 @@ const items = [
 
 export function WorkQueueWidget(props: WorkQueueWidgetProps) {
   return (
-    <div className="rounded-2xl border bg-card p-5">
+    <div className="rounded-card bg-card p-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold">Work Queue</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <h2 className="text-subtitle font-semibold font-heading tracking-[-0.02em]">Work Queue</h2>
+          <p className="mt-1 text-body text-muted-foreground">
             Start here when you want the shortest path through today&apos;s bookkeeping.
           </p>
         </div>
@@ -51,10 +51,10 @@ export function WorkQueueWidget(props: WorkQueueWidgetProps) {
           <Link
             key={item.key}
             href={item.href}
-            className="rounded-xl border bg-muted/20 px-4 py-4 transition-colors hover:bg-muted/40"
+            className="rounded-card border border-border bg-background px-4 py-4 transition-colors hover:border-primary"
           >
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">{item.label}</div>
-            <div className="mt-2 text-2xl font-semibold tabular-nums">{props[item.key]}</div>
+            <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">{item.label}</div>
+            <div className="mt-2 text-2xl font-semibold font-heading tabular-nums">{props[item.key]}</div>
             <div className="mt-2 text-sm text-muted-foreground">{item.hint}</div>
           </Link>
         ))}

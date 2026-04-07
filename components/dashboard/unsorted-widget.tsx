@@ -15,7 +15,7 @@ export default function DashboardUnsortedWidget({ files }: { files: File[] }) {
             Open
           </Link>
         </CardTitle>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-body text-muted-foreground">
           Recently uploaded documents land here first so you can review, classify, and attach them properly.
         </p>
       </CardHeader>
@@ -25,7 +25,7 @@ export default function DashboardUnsortedWidget({ files }: { files: File[] }) {
             <Link
               href={`/unsorted/#${file.id}`}
               key={file.id}
-              className="rounded-xl border p-3 transition-colors hover:bg-muted/40"
+              className="rounded-card border border-border p-3 transition-colors hover:border-primary"
             >
               <div className="flex flex-row gap-2">
                 <FilePlus className="h-8 w-8" />
@@ -38,7 +38,7 @@ export default function DashboardUnsortedWidget({ files }: { files: File[] }) {
             </Link>
           ))}
           {files.length === 0 && (
-            <div className="flex min-h-[120px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed text-center text-sm text-muted-foreground">
+            <div className="flex min-h-[120px] flex-col items-center justify-center gap-2 rounded-card border border-dashed border-border text-center text-sm text-muted-foreground">
               <Inbox className="h-8 w-8" />
               <div>No new uploads are waiting for review.</div>
             </div>

@@ -23,6 +23,7 @@ import Link from "next/link"
 import { EmptyState } from "@/components/ui/empty-state"
 import { StatCard } from "@/components/ui/stat-card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Button } from "@/components/ui/button"
 
 interface ReportsTabsProps {
   year: number
@@ -74,10 +75,10 @@ export function ReportsTabs({
           <button
             key={y}
             onClick={() => router.push(`/reports?year=${y}`)}
-            className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
+            className={`px-3 py-1.5 text-sm rounded-button border transition-colors ${
               y === year
-                ? "bg-foreground text-background border-foreground"
-                : "border-border text-muted-foreground hover:text-foreground"
+                ? "bg-primary text-primary-foreground border-primary"
+                : "border-border text-muted-foreground hover:text-foreground hover:border-primary"
             }`}
           >
             {y}
@@ -108,31 +109,25 @@ export function ReportsTabs({
               }
             />
           </div>
-          <div className="rounded-lg border p-5">
+          <div className="rounded-card border border-border bg-card p-space-4">
             <p className="text-sm font-medium mb-4">Maandelijkse omzet {year}</p>
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={monthlyRevenue} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `€${v}`} />
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="label" tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} stroke="hsl(var(--border))" />
+                <YAxis tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} stroke="hsl(var(--border))" tickFormatter={(v) => `€${v}`} />
                 <Tooltip formatter={(v) => fmt(Number(v), defaultCurrency)} />
-                <Bar dataKey="revenue" name="Omzet" fill="#18181b" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="revenue" name="Omzet" fill="hsl(var(--chart-1))" radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <div className="flex gap-3">
-            <a
-              href={`/export/invoices?year=${year}`}
-              className="text-sm px-3 py-2 rounded-md border border-border hover:bg-muted/30 transition-colors"
-            >
-              CSV exporteren
-            </a>
-            <a
-              href={`/export/zip?year=${year}`}
-              className="text-sm px-3 py-2 rounded-md border border-border hover:bg-muted/30 transition-colors"
-            >
-              PDF&apos;s downloaden (ZIP)
-            </a>
+          <div className="flex flex-wrap gap-3">
+            <Button variant="secondary" asChild>
+              <a href={`/export/invoices?year=${year}`}>CSV exporteren</a>
+            </Button>
+            <Button variant="secondary" asChild>
+              <a href={`/export/zip?year=${year}`}>PDF&apos;s downloaden (ZIP)</a>
+            </Button>
           </div>
         </TabsContent>
 
@@ -144,28 +139,25 @@ export function ReportsTabs({
               description="Probeer een ander jaar of importeer eerst je transacties."
             />
           ) : (
-            <div className="rounded-lg border p-5">
+            <div className="rounded-card border border-border bg-card p-space-4">
               <p className="text-sm font-medium mb-4">Inkomsten vs Uitgaven {year}</p>
               <ResponsiveContainer width="100%" height={280}>
                 <LineChart data={cashflowData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="period" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `€${v}`} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="period" tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} stroke="hsl(var(--border))" />
+                  <YAxis tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} stroke="hsl(var(--border))" tickFormatter={(v) => `€${v}`} />
                   <Tooltip formatter={(v) => fmt(Number(v), defaultCurrency)} />
                   <Legend />
-                  <Line type="monotone" dataKey="Inkomsten" stroke="#18181b" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="Uitgaven" stroke="#ef4444" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="Inkomsten" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="Uitgaven" stroke="hsl(var(--destructive))" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
           )}
           <div>
-            <a
-              href={`/export/expenses?year=${year}`}
-              className="text-sm px-3 py-2 rounded-md border border-border hover:bg-muted/30 transition-colors"
-            >
-              Uitgaven CSV exporteren
-            </a>
+            <Button variant="secondary" asChild>
+              <a href={`/export/expenses?year=${year}`}>Uitgaven CSV exporteren</a>
+            </Button>
           </div>
         </TabsContent>
 
@@ -181,15 +173,15 @@ export function ReportsTabs({
               description="Zodra een factuur onbetaald is, verschijnt die hier."
             />
           ) : (
-            <div className="rounded-lg border overflow-hidden">
+            <div className="overflow-x-auto">
               <Table>
-                <TableHeader className="bg-muted/20">
+                <TableHeader>
                   <TableRow>
-                    <TableHead className="px-3 py-3 text-xs uppercase tracking-wide">Factuur</TableHead>
-                    <TableHead className="px-3 py-3 text-xs uppercase tracking-wide">Klant</TableHead>
-                    <TableHead className="px-3 py-3 text-xs uppercase tracking-wide">Vervaldatum</TableHead>
-                    <TableHead className="px-3 py-3 text-right text-xs uppercase tracking-wide">Openstaand</TableHead>
-                    <TableHead className="px-3 py-3 text-xs uppercase tracking-wide">Status</TableHead>
+                    <TableHead className="px-3 py-3 text-xs uppercase tracking-wide text-muted-foreground">Factuur</TableHead>
+                    <TableHead className="px-3 py-3 text-xs uppercase tracking-wide text-muted-foreground">Klant</TableHead>
+                    <TableHead className="px-3 py-3 text-xs uppercase tracking-wide text-muted-foreground">Vervaldatum</TableHead>
+                    <TableHead className="px-3 py-3 text-right text-xs uppercase tracking-wide text-muted-foreground">Openstaand</TableHead>
+                    <TableHead className="px-3 py-3 text-xs uppercase tracking-wide text-muted-foreground">Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody className="divide-y">
@@ -198,7 +190,7 @@ export function ReportsTabs({
                     const isOverdue =
                       inv.dueDate && new Date(inv.dueDate) < new Date() && inv.status !== "paid"
                     return (
-                      <TableRow key={inv.id} className="hover:bg-muted/30">
+                      <TableRow key={inv.id} className="hover:bg-secondary/60">
                         <TableCell className="px-3 py-3 font-mono tabular-nums">
                           <Link href={`/invoices/${inv.id}`} className="hover:underline">
                             {inv.invoiceNumber}
@@ -238,20 +230,20 @@ export function ReportsTabs({
           <p className="text-xs text-muted-foreground">
             Gebaseerd op betaalde facturen en betaalde uitgaven in {year}. BTW op uitgaven vereist dat het BTW-bedrag ingevuld is per uitgave.
           </p>
-          <div className="rounded-lg border overflow-hidden">
+          <div className="overflow-x-auto">
             <Table>
-              <TableHeader className="bg-muted/20">
+              <TableHeader>
                 <TableRow>
-                  <TableHead className="px-3 py-3 text-xs uppercase tracking-wide">Kwartaal</TableHead>
-                  <TableHead className="px-3 py-3 text-right text-xs uppercase tracking-wide">Omzet excl. BTW</TableHead>
-                  <TableHead className="px-3 py-3 text-right text-xs uppercase tracking-wide">BTW ontvangen</TableHead>
-                  <TableHead className="px-3 py-3 text-right text-xs uppercase tracking-wide">BTW betaald</TableHead>
-                  <TableHead className="px-3 py-3 text-right text-xs uppercase tracking-wide font-semibold">Te betalen</TableHead>
+                  <TableHead className="px-3 py-3 text-xs uppercase tracking-wide text-muted-foreground">Kwartaal</TableHead>
+                  <TableHead className="px-3 py-3 text-right text-xs uppercase tracking-wide text-muted-foreground">Omzet excl. BTW</TableHead>
+                  <TableHead className="px-3 py-3 text-right text-xs uppercase tracking-wide text-muted-foreground">BTW ontvangen</TableHead>
+                  <TableHead className="px-3 py-3 text-right text-xs uppercase tracking-wide text-muted-foreground">BTW betaald</TableHead>
+                  <TableHead className="px-3 py-3 text-right text-xs uppercase tracking-wide text-muted-foreground font-semibold">Te betalen</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y">
                 {vatSummary.map((q) => (
-                  <TableRow key={q.quarter} className="hover:bg-muted/30">
+                  <TableRow key={q.quarter} className="hover:bg-secondary/60">
                     <TableCell className="px-3 py-3 font-medium">{q.quarter}</TableCell>
                     <TableCell className="px-3 py-3 text-right font-mono tabular-nums">
                       {fmt(q.invoiceSubtotal, defaultCurrency)}
@@ -264,14 +256,14 @@ export function ReportsTabs({
                     </TableCell>
                     <TableCell
                       className={`px-3 py-3 text-right font-mono tabular-nums font-semibold ${
-                        q.netVat <= 0 ? "text-emerald-700" : ""
+                        q.netVat <= 0 ? "text-success" : ""
                       }`}
                     >
                       {fmt(q.netVat, defaultCurrency)}
                     </TableCell>
                   </TableRow>
                 ))}
-                <TableRow className="bg-muted/20 font-semibold border-t-2">
+                <TableRow className="bg-secondary/60 font-semibold border-t-2">
                   <TableCell className="px-3 py-3">Totaal</TableCell>
                   <TableCell className="px-3 py-3 text-right font-mono tabular-nums">
                     {fmt(vatSummary.reduce((s, q) => s + q.invoiceSubtotal, 0), defaultCurrency)}
@@ -311,7 +303,7 @@ export function ReportsTabs({
             />
           </div>
 
-          <div className="rounded-lg border p-5">
+          <div className="rounded-card border border-border bg-card p-space-4">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-medium">Belgische drempel {year}</p>
@@ -330,11 +322,11 @@ export function ReportsTabs({
             </div>
             {authorRightsReport.rulesConfigured && authorRightsReport.thresholdRemaining !== null && (
               <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
-                <div className="rounded-md border bg-muted/20 px-3 py-2">
+                <div className="rounded-card bg-secondary/60 px-3 py-2">
                   <div className="text-muted-foreground">Nog beschikbaar</div>
                   <div className="font-mono tabular-nums">{fmt(authorRightsReport.thresholdRemaining, defaultCurrency)}</div>
                 </div>
-                <div className="rounded-md border bg-muted/20 px-3 py-2">
+                <div className="rounded-card bg-secondary/60 px-3 py-2">
                   <div className="text-muted-foreground">Beroepsvergoeding</div>
                   <div className="font-mono tabular-nums">{fmt(authorRightsReport.professionalGross, defaultCurrency)}</div>
                 </div>
@@ -342,19 +334,13 @@ export function ReportsTabs({
             )}
           </div>
 
-          <div className="flex gap-3">
-            <a
-              href={`/export/author-rights?year=${year}`}
-              className="text-sm px-3 py-2 rounded-md border border-border hover:bg-muted/30 transition-colors"
-            >
-              Jaaroverzicht exporteren
-            </a>
-            <a
-              href={`/export/author-rights/customers?year=${year}`}
-              className="text-sm px-3 py-2 rounded-md border border-border hover:bg-muted/30 transition-colors"
-            >
-              Klanttotalen exporteren
-            </a>
+          <div className="flex flex-wrap gap-3">
+            <Button variant="secondary" asChild>
+              <a href={`/export/author-rights?year=${year}`}>Jaaroverzicht exporteren</a>
+            </Button>
+            <Button variant="secondary" asChild>
+              <a href={`/export/author-rights/customers?year=${year}`}>Klanttotalen exporteren</a>
+            </Button>
           </div>
 
           {authorRightsReport.customerTotals.length === 0 ? (
@@ -363,20 +349,20 @@ export function ReportsTabs({
               description="Zodra je auteursrechten factureert, verschijnt de klantverdeling hier."
             />
           ) : (
-            <div className="rounded-lg border overflow-hidden">
+            <div className="overflow-x-auto">
               <Table>
-                <TableHeader className="bg-muted/20">
+                <TableHeader>
                   <TableRow>
-                    <TableHead className="px-3 py-3 text-xs uppercase tracking-wide">Klant</TableHead>
-                    <TableHead className="px-3 py-3 text-right text-xs uppercase tracking-wide">Facturen</TableHead>
-                    <TableHead className="px-3 py-3 text-right text-xs uppercase tracking-wide">Bruto rechten</TableHead>
-                    <TableHead className="px-3 py-3 text-right text-xs uppercase tracking-wide">Voorheffing</TableHead>
-                    <TableHead className="px-3 py-3 text-right text-xs uppercase tracking-wide">Netto rechten</TableHead>
+                    <TableHead className="px-3 py-3 text-xs uppercase tracking-wide text-muted-foreground">Klant</TableHead>
+                    <TableHead className="px-3 py-3 text-right text-xs uppercase tracking-wide text-muted-foreground">Facturen</TableHead>
+                    <TableHead className="px-3 py-3 text-right text-xs uppercase tracking-wide text-muted-foreground">Bruto rechten</TableHead>
+                    <TableHead className="px-3 py-3 text-right text-xs uppercase tracking-wide text-muted-foreground">Voorheffing</TableHead>
+                    <TableHead className="px-3 py-3 text-right text-xs uppercase tracking-wide text-muted-foreground">Netto rechten</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody className="divide-y">
                   {authorRightsReport.customerTotals.map((row) => (
-                    <TableRow key={row.customerId ?? row.customerName} className="hover:bg-muted/30">
+                    <TableRow key={row.customerId ?? row.customerName} className="hover:bg-secondary/60">
                       <TableCell className="px-3 py-3">{row.customerName}</TableCell>
                       <TableCell className="px-3 py-3 text-right font-mono tabular-nums">
                         {row.invoiceCount}

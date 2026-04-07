@@ -17,26 +17,26 @@ export function ProjectsWidget({
     <div className="grid gap-4 md:grid-cols-2">
       {projects.map((project) => (
         <Link key={project.code} href={`/invoices?projectCode=${project.code}`}>
-          <Card className="bg-gradient-to-tr from-white via-slate-50/40 to-purple-50/30 border-slate-200/60 hover:shadow-xl transition-all duration-500 hover:scale-[1.01] group cursor-pointer">
-            <CardHeader className="group-hover:translate-y-[-2px] transition-transform duration-300">
+          <Card className="bg-card border border-transparent hover:border-primary transition-colors group cursor-pointer">
+            <CardHeader>
               <CardTitle>
                 <Badge
-                  className="text-lg shadow-md hover:shadow-lg transition-all duration-300"
+                  className="text-base font-semibold"
                   style={{ backgroundColor: project.color }}
                 >
                   {project.name}
                 </Badge>
               </CardTitle>
             </CardHeader>
-            <CardContent className="group-hover:translate-y-[-1px] transition-transform duration-300">
+            <CardContent>
               <div className="flex flex-wrap gap-4 justify-between items-center">
-                <div className="bg-gradient-to-br from-green-50/80 to-emerald-50/60 p-3 rounded-xl border border-green-100/50">
+                <div className="bg-secondary/60 p-3 rounded-card">
                   <div className="text-sm font-medium text-muted-foreground">Income</div>
-                  <div className="text-2xl font-bold text-green-500">
+                  <div className="text-2xl font-bold text-success">
                     {Object.entries(statsPerProject[project.code]?.totalIncomePerCurrency).map(([currency, total]) => (
                       <div
                         key={currency}
-                        className="flex flex-col gap-2 font-bold text-green-500 text-base first:text-2xl"
+                        className="flex flex-col gap-2 font-bold text-success text-base first:text-2xl"
                       >
                         {formatCurrency(total, currency)}
                       </div>
@@ -46,14 +46,14 @@ export function ProjectsWidget({
                     )}
                   </div>
                 </div>
-                <div className="bg-gradient-to-br from-red-50/80 to-rose-50/60 p-3 rounded-xl border border-red-100/50">
+                <div className="bg-secondary/60 p-3 rounded-card">
                   <div className="text-sm font-medium text-muted-foreground">Expenses</div>
-                  <div className="text-2xl font-bold text-red-500">
+                  <div className="text-2xl font-bold text-destructive">
                     {Object.entries(statsPerProject[project.code]?.totalExpensesPerCurrency).map(
                       ([currency, total]) => (
                         <div
                           key={currency}
-                          className="flex flex-col gap-2 font-bold text-red-500 text-base first:text-2xl"
+                          className="flex flex-col gap-2 font-bold text-destructive text-base first:text-2xl"
                         >
                           {formatCurrency(total, currency)}
                         </div>
@@ -64,14 +64,14 @@ export function ProjectsWidget({
                     )}
                   </div>
                 </div>
-                <div className="bg-gradient-to-br from-violet-50/80 to-indigo-50/60 p-3 rounded-xl border border-violet-100/50">
+                <div className="bg-secondary/60 p-3 rounded-card">
                   <div className="text-sm font-medium text-muted-foreground">Profit</div>
                   <div className="text-2xl font-bold">
                     {Object.entries(statsPerProject[project.code]?.profitPerCurrency).map(([currency, total]) => (
                       <div
                         key={currency}
                         className={`flex flex-col gap-2 items-center text-2xl font-bold ${
-                          total >= 0 ? "text-green-500" : "text-red-500"
+                          total >= 0 ? "text-success" : "text-destructive"
                         }`}
                       >
                         {formatCurrency(total, currency)}
@@ -89,7 +89,7 @@ export function ProjectsWidget({
       ))}
       <Link
         href="/settings/projects"
-        className="flex items-center justify-center gap-2 border-dashed border-2 border-gradient-to-r rounded-lg p-6 text-muted-foreground transition-all duration-300 hover:scale-[1.02] hover:shadow-lg group"
+        className="flex items-center justify-center gap-2 rounded-card border-2 border-dashed border-border p-6 text-muted-foreground transition-colors hover:border-primary group"
       >
         <Plus className="h-5 w-5 group-hover:rotate-90 transition-transform duration-300" />
         <span className="font-medium">Create New Project</span>

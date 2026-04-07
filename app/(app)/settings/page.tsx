@@ -49,6 +49,7 @@ export default async function SettingsPage() {
     <>
       <div className="w-full max-w-2xl space-y-space-6">
         <Section
+          label="Readiness"
           title="Invoicing Readiness"
           description="Complete this checklist before sending invoices from TaxHacker."
           actions={
@@ -58,13 +59,13 @@ export default async function SettingsPage() {
             </div>
           }
         >
-          <div className="rounded-lg border bg-card p-space-4">
+          <div className="rounded-card bg-card p-space-4">
             <div className="grid gap-2">
               {readinessItems.map((item) => (
                 <Link
                   key={item.label}
                   href={item.href}
-                  className="flex items-center justify-between rounded-md border px-3 py-2 text-sm hover:bg-muted/20"
+                  className="flex items-center justify-between rounded-card border border-border px-3 py-2 text-sm transition-colors hover:border-primary"
                 >
                   <span>{item.label}</span>
                   <span
@@ -80,7 +81,7 @@ export default async function SettingsPage() {
           </div>
         </Section>
 
-        <Section title="General settings">
+        <Section label="Preferences" title="General settings">
           <GlobalSettingsForm settings={settings} currencies={currencies} categories={categories} locale={locale} />
         </Section>
       </div>

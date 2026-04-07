@@ -1,10 +1,18 @@
 import { Field } from "@/prisma/client"
 
+function toJsonSchemaType(type: string): string {
+  if (type === "single_select") {
+    return "string"
+  }
+
+  return type
+}
+
 export const fieldsToJsonSchema = (fields: Field[]) => {
   const fieldsWithPrompt = fields.filter((field) => field.llm_prompt)
   const schemaProperties = fieldsWithPrompt.reduce(
     (acc, field) => {
-      acc[field.code] = { type: field.type, description: field.llm_prompt || "" }
+      acc[field.code] = { type: toJsonSchemaType(field.type), description: field.llm_prompt || "" }
       return acc
     },
     {} as Record<string, { type: string; description: string }>

@@ -13,13 +13,16 @@ import { FormSelectCategory } from "@/components/forms/select-category"
 import { FormSelectCurrency } from "@/components/forms/select-currency"
 import { FormSelectProject } from "@/components/forms/select-project"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
+import { NativeSelect } from "@/components/ui/native-select"
 import { Textarea } from "@/components/ui/textarea"
 import { getExpenseStatusMeta } from "@/lib/expense-status"
+import { getFieldOptions } from "@/lib/fields"
 import { t } from "@/lib/i18n"
 import { formatLocaleCurrency, type UiLocale } from "@/lib/locale"
 import { formatBytes } from "@/lib/utils"
-import { Category, Currency, File, Project, Transaction } from "@/prisma/client"
+import { Category, Currency, Field, File, Project, Transaction } from "@/prisma/client"
 import {
   CheckCircle,
   Copy,
@@ -39,6 +42,7 @@ type ExpenseDetailProps = {
   categories: Category[]
   projects: Project[]
   currencies: Currency[]
+  fields: Field[]
   files: File[]
   defaultCurrency: string
   locale: UiLocale
@@ -59,6 +63,8 @@ type ExpenseFormState = {
   projectCode: string
   note: string
 }
+
+type CustomFieldState = Record<string, string | boolean>
 
 function toDateInput(value: Date | string | null | undefined) {
   if (!value) return ""
@@ -106,18 +112,63 @@ function buildFormState(
   }
 }
 
+function buildCustomFieldState(
+  expense: Transaction,
+  fields: Field[]
+): CustomFieldState {
+  const extra = (expense.extra as Record<string, unknown> | null) ?? {}
+
+  return fields.reduce<CustomFieldState>((acc, field) => {
+    const value = extra[field.code]
+
+    if (field.type === "boolean") {
+      acc[field.code] = value === true || value === "true"
+      return acc
+    }
+
+    acc[field.code] = value === null || value === undefined ? "" : String(value)
+    return acc
+  }, {})
+}
+
+function serializeCustomFieldValue(field: Field, value: string | boolean) {
+  if (field.type === "boolean") {
+    return value === true
+  }
+
+  if (field.type === "number") {
+    if (typeof value !== "string" || !value.trim()) {
+      return null
+    }
+
+    const parsed = Number.parseFloat(value.replace(",", "."))
+    return Number.isNaN(parsed) ? null : parsed
+  }
+
+  if (typeof value !== "string") {
+    return null
+  }
+
+  const trimmed = value.trim()
+  return trimmed ? trimmed : null
+}
+
 export function ExpenseDetail({
   expense,
   categories,
   projects,
   currencies,
+  fields,
   files,
   defaultCurrency,
   locale,
 }: ExpenseDetailProps) {
   const router = useRouter()
+  const extraFields = useMemo(() => fields.filter((field) => field.isExtra), [fields])
   const [formState, setFormState] = useState<ExpenseFormState>(() => buildFormState(expense, defaultCurrency))
   const [savedState, setSavedState] = useState<ExpenseFormState>(() => buildFormState(expense, defaultCurrency))
+  const [customFieldState, setCustomFieldState] = useState<CustomFieldState>(() => buildCustomFieldState(expense, extraFields))
+  const [savedCustomFieldState, setSavedCustomFieldState] = useState<CustomFieldState>(() => buildCustomFieldState(expense, extraFields))
   const [selectedFileId, setSelectedFileId] = useState<string | null>(files[0]?.id ?? null)
   const [isPending, startTransition] = useTransition()
   const [isUploading, setIsUploading] = useState(false)
@@ -127,9 +178,12 @@ export function ExpenseDetail({
 
   useEffect(() => {
     const nextState = buildFormState(expense, defaultCurrency)
+    const nextCustomFieldState = buildCustomFieldState(expense, extraFields)
     setFormState(nextState)
     setSavedState(nextState)
-  }, [defaultCurrency, expense])
+    setCustomFieldState(nextCustomFieldState)
+    setSavedCustomFieldState(nextCustomFieldState)
+  }, [defaultCurrency, expense, extraFields])
 
   useEffect(() => {
     if (files.length === 0) {
@@ -143,20 +197,32 @@ export function ExpenseDetail({
   }, [files, selectedFileId])
 
   const statusMeta = useMemo(() => getExpenseStatusMeta(expense.status, locale), [expense.status, locale])
-  const isDirty = JSON.stringify(formState) !== JSON.stringify(savedState)
+  const isDirty =
+    JSON.stringify(formState) !== JSON.stringify(savedState) ||
+    JSON.stringify(customFieldState) !== JSON.stringify(savedCustomFieldState)
   const selectedFile = files.find((file) => file.id === selectedFileId) ?? null
 
   function updateField(name: keyof ExpenseFormState, value: string) {
     setFormState((prev) => ({ ...prev, [name]: value }))
   }
 
+  function updateCustomField(code: string, value: string | boolean) {
+    setCustomFieldState((prev) => ({ ...prev, [code]: value }))
+  }
+
   function revertChanges() {
     setFormState(savedState)
+    setCustomFieldState(savedCustomFieldState)
     setUploadError("")
   }
 
   function handleSave() {
     startTransition(async () => {
+      const customFieldPayload = extraFields.reduce<Record<string, string | number | boolean | null>>((acc, field) => {
+        acc[field.code] = serializeCustomFieldValue(field, customFieldState[field.code] ?? "")
+        return acc
+      }, {})
+
       const result = await updateExpenseAction(expense.id, {
         name: formState.name || null,
         merchant: formState.merchant || null,
@@ -171,10 +237,12 @@ export function ExpenseDetail({
         categoryCode: formState.categoryCode || null,
         projectCode: formState.projectCode || null,
         note: formState.note || null,
+        ...customFieldPayload,
       })
 
       if (result.success) {
         setSavedState(formState)
+        setSavedCustomFieldState(customFieldState)
         toast.success(t(locale, "expenses.saveSuccess"))
         router.refresh()
         return
@@ -263,7 +331,7 @@ export function ExpenseDetail({
   }
 
   return (
-    <div className="grid w-full gap-6 lg:grid-cols-[minmax(360px,480px)_minmax(0,1fr)]">
+    <div className="grid w-full items-start gap-6 lg:grid-cols-[minmax(360px,480px)_minmax(0,1fr)]">
       <div className="space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -280,12 +348,12 @@ export function ExpenseDetail({
         </div>
 
         {isDirty && (
-          <div className="rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+          <div className="rounded-card border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
             {t(locale, "expenses.dirtyState")}
           </div>
         )}
 
-        <section className="rounded-xl border bg-card p-5">
+        <section className="rounded-card border bg-card p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="font-semibold">{t(locale, "expenses.detailsTitle")}</h2>
             <div className="flex gap-2">
@@ -386,8 +454,52 @@ export function ExpenseDetail({
               </label>
             </div>
 
+            {extraFields.length > 0 && (
+              <div className="space-y-3">
+                <div className="text-sm font-medium">{t(locale, "expenses.customFieldsTitle")}</div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  {extraFields.map((field) => {
+                    const value = customFieldState[field.code]
+
+                    return (
+                      <label key={field.code} className="space-y-1">
+                        <span className="text-sm font-medium">{field.name}</span>
+                        {field.type === "boolean" ? (
+                          <div className="flex min-h-10 items-center rounded-control border border-input bg-background px-3">
+                            <Checkbox
+                              checked={value === true}
+                              onCheckedChange={(checked) => updateCustomField(field.code, checked === true)}
+                            />
+                          </div>
+                        ) : field.type === "single_select" ? (
+                          <NativeSelect
+                            value={String(value ?? "")}
+                            onChange={(event) => updateCustomField(field.code, event.target.value)}
+                          >
+                            <option value="">{t(locale, "expenses.selectOption")}</option>
+                            {getFieldOptions(field.options).map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </NativeSelect>
+                        ) : (
+                          <Input
+                            type={field.type === "number" ? "number" : "text"}
+                            step={field.type === "number" ? "0.01" : undefined}
+                            value={String(value ?? "")}
+                            onChange={(event) => updateCustomField(field.code, event.target.value)}
+                          />
+                        )}
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             {expense.linkedExpenseId && (
-              <div className="rounded-lg border bg-muted/20 px-4 py-3 text-sm">
+              <div className="rounded-card border bg-muted/20 px-4 py-3 text-sm">
                 <div className="text-xs uppercase tracking-wide text-muted-foreground">{t(locale, "expenses.fieldLinkedExpense")}</div>
                 <Link href={`/expenses/${expense.linkedExpenseId}`} className="mt-1 inline-block font-medium hover:underline">
                   {expense.linkedExpenseId}
@@ -397,7 +509,7 @@ export function ExpenseDetail({
           </div>
         </section>
 
-        <section className="rounded-xl border bg-card p-5">
+        <section className="rounded-card border bg-card p-5">
           <div className="grid gap-3 sm:grid-cols-2">
             {expense.status !== "paid" && (
               <Button onClick={() => runStatusAction(() => markExpensePaidAction(expense.id))} disabled={isPending}>
@@ -443,8 +555,33 @@ export function ExpenseDetail({
         </section>
       </div>
 
-      <div className="space-y-6">
-        <section className="rounded-xl border bg-card">
+      <div className="space-y-6 lg:sticky lg:top-6">
+        <section
+          onDragOver={(event) => {
+            event.preventDefault()
+            setIsDragOver(true)
+          }}
+          onDragLeave={(event) => {
+            // only clear when leaving the section itself, not its children
+            if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+            setIsDragOver(false)
+          }}
+          onDrop={(event) => {
+            event.preventDefault()
+            setIsDragOver(false)
+            void handleFileUpload(event.dataTransfer.files)
+          }}
+          className={`rounded-card border bg-card transition-colors ${
+            isDragOver ? "border-foreground/50 ring-2 ring-foreground/20" : ""
+          }`}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(event) => void handleFileUpload(event.target.files)}
+          />
           <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
             <div>
               <h2 className="font-semibold">{t(locale, "expenses.sourceDocuments")}</h2>
@@ -470,7 +607,7 @@ export function ExpenseDetail({
             </div>
           </div>
 
-          <div className="grid gap-0 lg:grid-cols-[280px_minmax(0,1fr)]">
+          <div className="grid gap-0 lg:grid-cols-[240px_minmax(0,1fr)]">
             <div className="border-b lg:border-b-0 lg:border-r p-3 space-y-2">
               {files.length > 0 ? (
                 files.map((file) => {
@@ -484,7 +621,7 @@ export function ExpenseDetail({
                       key={file.id}
                       type="button"
                       onClick={() => setSelectedFileId(file.id)}
-                      className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
+                      className={`w-full rounded-control border px-3 py-2 text-left transition-colors ${
                         selectedFileId === file.id
                           ? "border-foreground bg-muted"
                           : "border-border hover:bg-muted/50"
@@ -498,7 +635,7 @@ export function ExpenseDetail({
                   )
                 })
               ) : (
-                <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                <div className="rounded-control border border-dashed p-4 text-sm text-muted-foreground">
                   {t(locale, "expenses.noFiles")}
                 </div>
               )}
@@ -508,51 +645,26 @@ export function ExpenseDetail({
               {selectedFile ? (
                 <iframe
                   key={selectedFile.id}
-                  src={`/files/preview/${selectedFile.id}`}
+                  src={`/files/preview/${selectedFile.id}#view=FitH&toolbar=0&navpanes=0`}
                   title={selectedFile.filename}
-                  className="min-h-[480px] w-full rounded-lg border bg-background"
+                  className="block h-[calc(100vh-220px)] min-h-[520px] w-full rounded-control border bg-background"
                 />
               ) : (
-                <div className="flex min-h-[320px] items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
+                <div className="flex min-h-[520px] items-center justify-center rounded-control border border-dashed text-sm text-muted-foreground">
                   {files.length === 0 ? t(locale, "expenses.noFiles") : t(locale, "expenses.noPreviewAvailable")}
                 </div>
               )}
             </div>
           </div>
 
-          <div className="border-t p-4">
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={(event) => void handleFileUpload(event.target.files)}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              onDragOver={(event) => {
-                event.preventDefault()
-                setIsDragOver(true)
-              }}
-              onDragLeave={() => setIsDragOver(false)}
-              onDrop={(event) => {
-                event.preventDefault()
-                setIsDragOver(false)
-                void handleFileUpload(event.dataTransfer.files)
-              }}
-              disabled={isUploading}
-              className={`flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-4 text-sm transition-colors ${
-                isDragOver
-                  ? "border-foreground/40 bg-muted/60 text-foreground"
-                  : "border-border text-muted-foreground hover:border-foreground/30 hover:bg-muted/50"
-              } ${isUploading ? "cursor-not-allowed opacity-50" : ""}`}
-            >
-              {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-              <span>{isUploading ? t(locale, "expenses.uploading") : t(locale, "expenses.addFiles")}</span>
-            </button>
-            {uploadError && <p className="mt-2 text-xs text-destructive">{uploadError}</p>}
-          </div>
+          {(uploadError || isDragOver) && (
+            <div className="border-t px-4 py-3">
+              {isDragOver && (
+                <p className="text-xs text-muted-foreground">{t(locale, "expenses.dropToUpload")}</p>
+              )}
+              {uploadError && <p className="text-xs text-destructive">{uploadError}</p>}
+            </div>
+          )}
         </section>
       </div>
     </div>

@@ -37,7 +37,7 @@ export default async function ReportsPage({
 
   return (
     <PageShell>
-      <PageHeader title="Reports" className="mb-space-6" />
+      <PageHeader title={`Reports — ${year}`} className="mb-space-6" />
       <ReportsTabs
         year={year}
         monthlyRevenue={monthlyRevenue}

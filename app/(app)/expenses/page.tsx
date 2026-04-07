@@ -2,10 +2,15 @@ import { ExpenseList } from "@/components/expenses/expense-list"
 import { UploadButton } from "@/components/files/upload-button"
 import { Button } from "@/components/ui/button"
 import { PageShell } from "@/components/ui/page-shell"
+import { PageHeader } from "@/components/ui/page-header"
+import { StatCard } from "@/components/ui/stat-card"
 import { getCurrentUser } from "@/lib/auth"
 import { getExpenseAmountForCurrency } from "@/lib/expense-status"
 import { t } from "@/lib/i18n"
 import { formatLocaleCurrency, formatLocaleNumber, getUiLocale } from "@/lib/locale"
+import { getCategories } from "@/models/categories"
+import { getFields } from "@/models/fields"
+import { getProjects } from "@/models/projects"
 import { getSettings } from "@/models/settings"
 import { getExpenses } from "@/models/transactions"
 import { Download, Upload } from "lucide-react"
@@ -24,7 +29,13 @@ export default async function ExpensesPage({
 }) {
   await searchParams
   const user = await getCurrentUser()
-  const [expenses, settings] = await Promise.all([getExpenses(user.id), getSettings(user.id)])
+  const [expenses, categories, fields, projects, settings] = await Promise.all([
+    getExpenses(user.id),
+    getCategories(user.id),
+    getFields(user.id),
+    getProjects(user.id),
+    getSettings(user.id),
+  ])
   const year = new Date().getFullYear()
   const defaultCurrency = settings.default_currency || "EUR"
   const locale = getUiLocale(settings)
@@ -37,64 +48,81 @@ export default async function ExpensesPage({
 
   return (
     <PageShell>
-      <header className="flex flex-wrap items-center justify-between gap-2 mb-8">
-        <h2 className="flex flex-row gap-3 md:gap-5 items-baseline">
-          <span className="text-3xl font-bold tracking-tight">{t(locale, "expenses.title")}</span>
-          <span className="text-base tracking-tight text-muted-foreground">
-            {t(locale, "expenses.subtitle", {
-              count: formatLocaleNumber(expenses.length, locale),
-            })}
-          </span>
-        </h2>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" asChild>
-            <Link href={`/export/expenses?year=${year}`}>
-              <Download className="h-4 w-4" />
-              {t(locale, "expenses.exportYear", { year })}
-            </Link>
-          </Button>
-          <UploadButton>
-            <Upload className="h-4 w-4" />
-            <span>{t(locale, "expenses.uploadReceipt")}</span>
-          </UploadButton>
-        </div>
-      </header>
+      <PageHeader
+        title={t(locale, "expenses.title")}
+        description={t(locale, "expenses.subtitle", {
+          count: formatLocaleNumber(expenses.length, locale),
+        })}
+        className="mb-space-6"
+        actions={
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" asChild>
+              <Link href={`/export/expenses?year=${year}`}>
+                <Download className="h-4 w-4" />
+                {t(locale, "expenses.exportYear", { year })}
+              </Link>
+            </Button>
+            <UploadButton>
+              <Upload className="h-4 w-4" />
+              <span>{t(locale, "expenses.uploadReceipt")}</span>
+            </UploadButton>
+          </div>
+        }
+      />
 
       <div className="grid gap-4 mb-8 md:grid-cols-3">
-        <div className="rounded-lg border bg-card p-5">
-          <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">{t(locale, "expenses.overviewOpen")}</p>
-          <p className="text-2xl font-semibold tabular-nums font-mono">
-            {formatLocaleCurrency(sumTotal(outstanding), defaultCurrency, locale)}
-          </p>
-          <p className="text-sm text-muted-foreground mt-1">
-            {formatLocaleNumber(outstanding.length, locale)}{" "}
-            {t(locale, outstanding.length === 1 ? "expenses.countExpense" : "expenses.countExpenses")}
-          </p>
-        </div>
-        <div className="rounded-lg border bg-card p-5">
-          <p className="text-xs text-red-500 uppercase tracking-wide mb-2">{t(locale, "expenses.overviewOverdue")}</p>
-          <p className="text-2xl font-semibold tabular-nums font-mono text-red-600">
-            {formatLocaleCurrency(sumTotal(overdue), defaultCurrency, locale)}
-          </p>
-          <p className="text-sm text-muted-foreground mt-1">
-            {formatLocaleNumber(overdue.length, locale)}{" "}
-            {t(locale, overdue.length === 1 ? "expenses.countExpense" : "expenses.countExpenses")}
-          </p>
-        </div>
-        <div className="rounded-lg border bg-card p-5">
-          <p className="text-xs text-emerald-600 uppercase tracking-wide mb-2">{t(locale, "expenses.overviewPaid")}</p>
-          <p className="text-2xl font-semibold tabular-nums font-mono text-emerald-700">
-            {formatLocaleCurrency(sumTotal(paid), defaultCurrency, locale)}
-          </p>
-          <p className="text-sm text-muted-foreground mt-1">
-            {formatLocaleNumber(paid.length, locale)}{" "}
-            {t(locale, paid.length === 1 ? "expenses.countExpense" : "expenses.countExpenses")}
-          </p>
-        </div>
+        <StatCard
+          tone="warning"
+          label={t(locale, "expenses.overviewOpen")}
+          value={
+            <span className="font-mono tabular-nums">
+              {formatLocaleCurrency(sumTotal(outstanding), defaultCurrency, locale)}
+            </span>
+          }
+          helper={`${formatLocaleNumber(outstanding.length, locale)} ${t(
+            locale,
+            outstanding.length === 1 ? "expenses.countExpense" : "expenses.countExpenses"
+          )}`}
+        />
+        <StatCard
+          tone={overdue.length > 0 ? "destructive" : "default"}
+          valueTone={overdue.length > 0 ? "destructive" : undefined}
+          label={t(locale, "expenses.overviewOverdue")}
+          value={
+            <span className="font-mono tabular-nums">
+              {formatLocaleCurrency(sumTotal(overdue), defaultCurrency, locale)}
+            </span>
+          }
+          helper={`${formatLocaleNumber(overdue.length, locale)} ${t(
+            locale,
+            overdue.length === 1 ? "expenses.countExpense" : "expenses.countExpenses"
+          )}`}
+        />
+        <StatCard
+          tone="success"
+          valueTone="success"
+          label={t(locale, "expenses.overviewPaid")}
+          value={
+            <span className="font-mono tabular-nums">
+              {formatLocaleCurrency(sumTotal(paid), defaultCurrency, locale)}
+            </span>
+          }
+          helper={`${formatLocaleNumber(paid.length, locale)} ${t(
+            locale,
+            paid.length === 1 ? "expenses.countExpense" : "expenses.countExpenses"
+          )}`}
+        />
       </div>
 
-      <div className="border rounded-lg overflow-hidden">
-        <ExpenseList expenses={expenses} defaultCurrency={defaultCurrency} locale={locale} />
+      <div>
+        <ExpenseList
+          expenses={expenses}
+          categories={categories}
+          fields={fields}
+          projects={projects}
+          defaultCurrency={defaultCurrency}
+          locale={locale}
+        />
       </div>
     </PageShell>
   )

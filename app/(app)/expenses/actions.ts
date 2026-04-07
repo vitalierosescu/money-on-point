@@ -2,10 +2,12 @@
 
 import { prisma } from "@/lib/db"
 import { getCurrentUser, isSubscriptionExpired } from "@/lib/auth"
-import { updateExpenseStatus } from "@/models/transactions"
-import { deleteTransaction } from "@/models/transactions"
+import { normalizeFieldOptionsInput } from "@/lib/fields"
+import { createField, updateField } from "@/models/fields"
+import { deleteTransaction, updateExpenseStatus, updateTransaction } from "@/models/transactions"
 import { revalidatePath, revalidateTag } from "next/cache"
 import {
+  getDirectorySize,
   getUserUploadsDirectory,
   isEnoughStorageToUploadFile,
   safePathJoin,
@@ -13,8 +15,9 @@ import {
 } from "@/lib/files"
 import { createFile, updateFile } from "@/models/files"
 import { updateUser } from "@/models/users"
-import { getDirectorySize } from "@/lib/files"
 import { randomUUID } from "crypto"
+import { codeFromName } from "@/lib/utils"
+import { Prisma } from "@/prisma/client"
 import { mkdir, writeFile } from "fs/promises"
 import path from "path"
 
@@ -44,30 +47,67 @@ export async function markExpenseUnpaidAction(id: string) {
 
 export async function updateExpenseAction(
   id: string,
-  data: {
-    merchant?: string | null
-    total?: number | null
-    currencyCode?: string | null
-    issuedAt?: Date | null
-    dueDate?: Date | null
-    categoryCode?: string | null
-    projectCode?: string | null
-    note?: string | null
-    name?: string | null
-    description?: string | null
-    taxAmount?: number | null
-    convertedTotal?: number | null
-    convertedCurrencyCode?: string | null
-  }
+  data: Record<string, unknown>
 ) {
   const user = await getCurrentUser()
-  await prisma.transaction.update({
-    where: { id, userId: user.id },
-    data,
-  })
+  await updateTransaction(id, user.id, data)
   revalidatePath("/expenses")
   revalidatePath(`/expenses/${id}`)
   return { success: true }
+}
+
+export async function updateExpenseFieldVisibilityAction(code: string, isVisibleInList: boolean) {
+  const user = await getCurrentUser()
+
+  await updateField(user.id, code, { isVisibleInList })
+
+  revalidatePath("/expenses")
+  revalidatePath("/settings/fields")
+  return { success: true }
+}
+
+export async function createExpenseFieldAction(data: {
+  name: string
+  type: "string" | "single_select"
+  options?: string[] | string | null
+}) {
+  const user = await getCurrentUser()
+  const type = data.type === "single_select" ? "single_select" : "string"
+  const options = normalizeFieldOptionsInput(type, data.options)
+
+  if (!data.name.trim()) {
+    return { success: false, error: "Field name is required." }
+  }
+
+  if (type === "single_select" && (!options || options.length === 0)) {
+    return { success: false, error: "Single-select fields need at least one option." }
+  }
+
+  const code = codeFromName(data.name)
+
+  try {
+    const field = await createField(user.id, {
+      code,
+      name: data.name.trim(),
+      type,
+      options,
+      llm_prompt: null,
+      isVisibleInList: true,
+      isVisibleInAnalysis: false,
+      isRequired: false,
+      isExtra: true,
+    })
+
+    revalidatePath("/expenses")
+    revalidatePath("/settings/fields")
+    return { success: true, field }
+  } catch (error: unknown) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return { success: false, error: "A field with this name already exists." }
+    }
+
+    return { success: false, error: "Failed to create field." }
+  }
 }
 
 export async function duplicateExpenseAction(id: string) {

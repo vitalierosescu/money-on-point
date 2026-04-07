@@ -42,7 +42,7 @@ export default function DashboardDropZoneWidget() {
 
   return (
     <div className="flex w-full h-full">
-      <label className="relative w-full h-full cursor-pointer rounded-2xl border-2 border-dashed border-border bg-card transition-colors hover:border-primary">
+      <label className="relative w-full h-full cursor-pointer rounded-card border-2 border-dashed border-border bg-card transition-colors hover:border-primary">
         <input
           type="file"
           id="fileInput"
@@ -58,11 +58,11 @@ export default function DashboardDropZoneWidget() {
             <Camera className="h-8 w-8 text-muted-foreground" />
           )}
           <div>
-            <p className="text-lg font-medium">
+            <p className="text-subtitle font-semibold font-heading tracking-[-0.02em]">
               {isUploading ? "Uploading..." : "Drop receipts, invoices, or PDFs here"}
             </p>
             {!uploadError && (
-              <p className="mt-1 text-sm text-muted-foreground">
+              <p className="mt-1 text-body text-muted-foreground">
                 You&apos;ll land in Unsorted after upload so you can review and classify everything right away.
               </p>
             )}
