@@ -106,7 +106,7 @@ export default function IntegrationsSettingsForm({ settings }: { settings: Recor
         </div>
       </div>
 
-      {saveState && !saveState.success && <FormError message={saveState.error} />}
+      {saveState && !saveState.success && <FormError>{saveState.error}</FormError>}
 
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" disabled={pending}>

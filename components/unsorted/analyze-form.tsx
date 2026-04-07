@@ -5,6 +5,7 @@ import { CurrencyConverterTool } from "@/components/agents/currency-converter"
 import { ItemsDetectTool } from "@/components/agents/items-detect"
 import ToolWindow from "@/components/agents/tool-window"
 import { FormError } from "@/components/forms/error"
+import { MerchantAutocomplete } from "@/components/forms/merchant-autocomplete"
 import { FormSelectCategory } from "@/components/forms/select-category"
 import { FormSelectCurrency } from "@/components/forms/select-currency"
 import { FormSelectProject } from "@/components/forms/select-project"
@@ -393,9 +394,17 @@ export default function AnalyzeForm({
             <Alert className="border-amber-200 bg-amber-50 text-amber-900">
               <AlertTriangle className="h-4 w-4" />
               <div>
-                <AlertTitle>{t(locale, "analyze.warningTitle")}</AlertTitle>
+                <AlertTitle>
+                  {file.cachedParseResult
+                    ? t(locale, "analyze.needsReviewTitle")
+                    : t(locale, "analyze.warningTitle")}
+                </AlertTitle>
                 <AlertDescription>
-                  <p>{t(locale, "analyze.warningDescription")}</p>
+                  <p>
+                    {file.cachedParseResult
+                      ? t(locale, "analyze.needsReviewDescription")
+                      : t(locale, "analyze.warningDescription")}
+                  </p>
                   <ul className="mt-2 list-disc pl-4">
                     {warnings.map((warning) => (
                       <li key={warning}>{warning}</li>
@@ -416,13 +425,13 @@ export default function AnalyzeForm({
           required={fieldMap.name.isRequired}
         />
 
-        <FormInput
+        <MerchantAutocomplete
           title={fieldMap.merchant.name}
           name="merchant"
-          value={formData.merchant}
-          onChange={(e) => updateField("merchant", e.target.value)}
-          hideIfEmpty={!fieldMap.merchant.isVisibleInAnalysis}
+          value={formData.merchant ?? ""}
+          onChange={(next) => updateField("merchant", next)}
           required={fieldMap.merchant.isRequired}
+          locale={locale}
         />
 
         <FormInput
@@ -430,7 +439,6 @@ export default function AnalyzeForm({
           name="description"
           value={formData.description}
           onChange={(e) => updateField("description", e.target.value)}
-          hideIfEmpty={!fieldMap.description.isVisibleInAnalysis}
           required={fieldMap.description.isRequired}
         />
 
@@ -461,7 +469,6 @@ export default function AnalyzeForm({
             name="currencyCode"
             value={formData.currencyCode}
             onValueChange={(value) => updateField("currencyCode", value)}
-            hideIfEmpty={!fieldMap.currencyCode.isVisibleInAnalysis}
             isRequired={fieldMap.currencyCode.isRequired}
           />
 
@@ -470,7 +477,6 @@ export default function AnalyzeForm({
             name="type"
             value={formData.type}
             onValueChange={(value) => updateField("type", value)}
-            hideIfEmpty={!fieldMap.type.isVisibleInAnalysis}
             isRequired={fieldMap.type.isRequired}
             options={typeOptions}
           />
@@ -508,7 +514,6 @@ export default function AnalyzeForm({
             name="issuedAt"
             value={formData.issuedAt}
             onChange={(e) => updateField("issuedAt", e.target.value)}
-            hideIfEmpty={!fieldMap.issuedAt.isVisibleInAnalysis}
             required={fieldMap.issuedAt.isRequired}
           />
         </div>
@@ -521,7 +526,6 @@ export default function AnalyzeForm({
             value={formData.categoryCode}
             onValueChange={(value) => updateField("categoryCode", value)}
             placeholder={t(locale, "analyze.selectCategory")}
-            hideIfEmpty={!fieldMap.categoryCode.isVisibleInAnalysis}
             isRequired={fieldMap.categoryCode.isRequired}
           />
 
@@ -533,7 +537,6 @@ export default function AnalyzeForm({
               value={formData.projectCode}
               onValueChange={(value) => updateField("projectCode", value)}
               placeholder={t(locale, "analyze.selectProject")}
-              hideIfEmpty={!fieldMap.projectCode.isVisibleInAnalysis}
               isRequired={fieldMap.projectCode.isRequired}
             />
           )}
@@ -544,7 +547,6 @@ export default function AnalyzeForm({
           name="note"
           value={formData.note}
           onChange={(e) => updateField("note", e.target.value)}
-          hideIfEmpty={!fieldMap.note.isVisibleInAnalysis}
           required={fieldMap.note.isRequired}
         />
 
@@ -556,7 +558,6 @@ export default function AnalyzeForm({
             name={field.code}
             value={formData[field.code as keyof typeof formData]}
             onChange={(e) => updateField(field.code, e.target.value)}
-            hideIfEmpty={!field.isVisibleInAnalysis}
             required={field.isRequired}
           />
         ))}

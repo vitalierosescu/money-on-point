@@ -13,13 +13,35 @@ import {
   safePathJoin,
   unsortedFilePath,
 } from "@/lib/files"
-import { createFile, updateFile } from "@/models/files"
+import { createFile, deleteFile, updateFile } from "@/models/files"
 import { updateUser } from "@/models/users"
 import { randomUUID } from "crypto"
 import { codeFromName } from "@/lib/utils"
 import { Prisma } from "@/prisma/client"
 import { mkdir, writeFile } from "fs/promises"
 import path from "path"
+
+export async function listMerchantsAction(): Promise<
+  { success: true; merchants: string[] } | { success: false; error: string }
+> {
+  try {
+    const user = await getCurrentUser()
+    const rows = await prisma.transaction.findMany({
+      where: { userId: user.id, merchant: { not: null } },
+      select: { merchant: true },
+      distinct: ["merchant"],
+      orderBy: { merchant: "asc" },
+      take: 200,
+    })
+    const merchants = rows
+      .map((row) => row.merchant?.trim())
+      .filter((value): value is string => Boolean(value && value.length > 0))
+    return { success: true, merchants }
+  } catch (error) {
+    console.error("Failed to list merchants:", error)
+    return { success: false, error: "Failed to list merchants" }
+  }
+}
 
 export async function markExpensePaidAction(id: string) {
   const user = await getCurrentUser()
@@ -262,6 +284,48 @@ export async function attachFileToExpenseAction(expenseId: string, fileId: strin
     where: { id: expenseId, userId: user.id },
     data: { files: [...currentFiles, fileId] },
   })
+  revalidatePath("/expenses")
+  revalidatePath(`/expenses/${expenseId}`)
+  revalidatePath("/files")
+  return { success: true }
+}
+
+export async function removeFileFromExpenseAction(
+  expenseId: string,
+  fileId: string
+): Promise<{ success: boolean; error?: string }> {
+  const user = await getCurrentUser()
+  const expense = await prisma.transaction.findFirst({
+    where: { id: expenseId, userId: user.id },
+  })
+  if (!expense) return { success: false, error: "Expense not found" }
+
+  const currentFiles = Array.isArray(expense.files) ? (expense.files as string[]) : []
+  if (!currentFiles.includes(fileId)) {
+    return { success: false, error: "File is not attached to this expense" }
+  }
+
+  // Detach from this expense
+  await prisma.transaction.update({
+    where: { id: expenseId, userId: user.id },
+    data: { files: currentFiles.filter((id) => id !== fileId) },
+  })
+
+  // If no other expense references this file, delete it from disk + db
+  const otherExpenses = await prisma.transaction.findMany({
+    where: {
+      userId: user.id,
+      id: { not: expenseId },
+      files: { array_contains: fileId },
+    },
+    select: { id: true },
+  })
+  if (otherExpenses.length === 0) {
+    await deleteFile(fileId, user.id)
+  }
+
+  revalidateTag(`unsorted:${user.id}`)
+  revalidateTag(`user:${user.id}`)
   revalidatePath("/expenses")
   revalidatePath(`/expenses/${expenseId}`)
   revalidatePath("/files")

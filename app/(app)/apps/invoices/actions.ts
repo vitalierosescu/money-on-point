@@ -11,20 +11,20 @@ import { getAppData, setAppData } from "@/models/apps"
 import { createFile } from "@/models/files"
 import { createTransaction, updateTransactionFiles } from "@/models/transactions"
 import { Transaction, User } from "@/prisma/client"
-import { renderToBuffer } from "@react-pdf/renderer"
+import { type DocumentProps, renderToBuffer } from "@react-pdf/renderer"
 import { randomUUID } from "crypto"
 import { mkdir, writeFile } from "fs/promises"
 import { revalidatePath } from "next/cache"
 import path from "path"
-import { createElement } from "react"
+import { type ReactElement, createElement } from "react"
 import { InvoiceFormData } from "./components/invoice-page"
 import { InvoicePDF } from "./components/invoice-pdf"
 import { InvoiceTemplate } from "./default-templates"
 import { InvoiceAppData } from "./page"
 
 export async function generateInvoicePDF(data: InvoiceFormData): Promise<Uint8Array> {
-  const pdfElement = createElement(InvoicePDF, { data })
-  const buffer = await renderToBuffer(pdfElement as any)
+  const pdfElement = createElement(InvoicePDF, { data }) as ReactElement<DocumentProps>
+  const buffer = await renderToBuffer(pdfElement)
   return new Uint8Array(buffer)
 }
 

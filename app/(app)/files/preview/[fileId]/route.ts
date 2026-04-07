@@ -43,11 +43,22 @@ export async function GET(request: Request, { params }: { params: Promise<{ file
     // Read file
     const fileBuffer = await fs.readFile(previewPath)
 
+    // Browsers force-download text/csv (and a few other text types) even with
+    // Content-Disposition: inline. Serve them as text/plain so iframes render
+    // them inline as a text preview instead of triggering a download.
+    const inlineTextTypes = new Set([
+      "text/csv",
+      "text/tab-separated-values",
+      "application/csv",
+    ])
+    const responseContentType = inlineTextTypes.has(contentType) ? "text/plain; charset=utf-8" : contentType
+
     // Return file with proper content type
     return new NextResponse(fileBuffer, {
       headers: {
-        "Content-Type": contentType,
+        "Content-Type": responseContentType,
         "Content-Disposition": `inline; filename*=${encodeFilename(path.basename(previewPath))}`,
+        "X-Content-Type-Options": "nosniff",
       },
     })
   } catch (error) {

@@ -42,6 +42,8 @@ model User {
   progress            Progress[]
   customers           Customer[]
   invoices            Invoice[]
+  archieCustomerMaps  ArchieCustomerMap[]
+  archieInvoiceMaps   ArchieInvoiceMap[]
 
   @@map("users")
 }
@@ -255,6 +257,7 @@ model Customer {
 
   invoices     Invoice[]
   transactions Transaction[]
+  archieMaps   ArchieCustomerMap[]
 
   @@map("customers")
 }
@@ -297,6 +300,12 @@ model Invoice {
   deliverySentAt   DateTime? @map("delivery_sent_at")
   providerReferenceId String? @map("provider_reference_id")
   providerError    String? @map("provider_error")
+  emailCopyStatus  String @default("not_sent") @map("email_copy_status")
+  emailCopySentAt  DateTime? @map("email_copy_sent_at")
+  emailCopyRecipients Json? @map("email_copy_recipients")
+  emailCopyProvider String? @map("email_copy_provider")
+  deliveryExceptionCode String? @map("delivery_exception_code")
+  deliveryExceptionNote String? @map("delivery_exception_note")
 
   templateData Json?   @map("template_data")
   pdfPath      String? @map("pdf_path")
@@ -305,6 +314,7 @@ model Invoice {
   transaction   Transaction? @relation(fields: [transactionId], references: [id])
 
   payments Payment[]
+  archieMap ArchieInvoiceMap?
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -365,7 +375,7 @@ model ArchieInvoiceMap {
   userId         String   @map("user_id") @db.Uuid
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   archieInvoiceId String  @map("archie_invoice_id")
-  invoiceId      String   @map("invoice_id") @db.Uuid
+  invoiceId      String   @unique @map("invoice_id") @db.Uuid
   invoice        Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")

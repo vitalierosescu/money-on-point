@@ -6,9 +6,11 @@ import {
   markExpensePaidAction,
   markExpenseToPayAction,
   markExpenseUnpaidAction,
+  removeFileFromExpenseAction,
   updateExpenseAction,
   uploadAndAttachFileToExpenseAction,
 } from "@/app/(app)/expenses/actions"
+import { MerchantAutocomplete } from "@/components/forms/merchant-autocomplete"
 import { FormSelectCategory } from "@/components/forms/select-category"
 import { FormSelectCurrency } from "@/components/forms/select-currency"
 import { FormSelectProject } from "@/components/forms/select-project"
@@ -31,6 +33,7 @@ import {
   Loader2,
   Trash2,
   Upload,
+  X,
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -282,6 +285,26 @@ export function ExpenseDetail({
     })
   }
 
+  function handleRemoveFile(fileId: string, filename: string) {
+    if (!window.confirm(t(locale, "expenses.removeFileConfirm", { filename }))) {
+      return
+    }
+
+    startTransition(async () => {
+      const result = await removeFileFromExpenseAction(expense.id, fileId)
+      if (result.success) {
+        if (selectedFileId === fileId) {
+          setSelectedFileId(null)
+        }
+        toast.success(t(locale, "expenses.removeFileSuccess"))
+        router.refresh()
+        return
+      }
+
+      toast.error(result.error || t(locale, "expenses.removeFileFailed"))
+    })
+  }
+
   function handleDelete() {
     if (!window.confirm(t(locale, "expenses.deleteConfirm"))) {
       return
@@ -331,7 +354,7 @@ export function ExpenseDetail({
   }
 
   return (
-    <div className="grid w-full items-start gap-6 lg:grid-cols-[minmax(360px,480px)_minmax(0,1fr)]">
+    <div className="grid w-full items-start gap-6 lg:grid-cols-[minmax(360px,480px)_auto] 2xl:grid-cols-[minmax(360px,1fr)_auto]">
       <div className="space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -373,10 +396,13 @@ export function ExpenseDetail({
                 <span className="text-sm font-medium">{t(locale, "expenses.fieldName")}</span>
                 <Input value={formState.name} onChange={(event) => updateField("name", event.target.value)} />
               </label>
-              <label className="space-y-1">
-                <span className="text-sm font-medium">{t(locale, "expenses.fieldMerchant")}</span>
-                <Input value={formState.merchant} onChange={(event) => updateField("merchant", event.target.value)} />
-              </label>
+              <MerchantAutocomplete
+                title={t(locale, "expenses.fieldMerchant")}
+                name="merchant"
+                value={formState.merchant}
+                onChange={(next) => updateField("merchant", next)}
+                locale={locale}
+              />
             </div>
 
             <label className="space-y-1">
@@ -607,7 +633,7 @@ export function ExpenseDetail({
             </div>
           </div>
 
-          <div className="grid gap-0 lg:grid-cols-[240px_minmax(0,1fr)]">
+          <div className="grid gap-0 lg:grid-cols-[240px_auto]">
             <div className="border-b lg:border-b-0 lg:border-r p-3 space-y-2">
               {files.length > 0 ? (
                 files.map((file) => {
@@ -617,21 +643,38 @@ export function ExpenseDetail({
                       : 0
 
                   return (
-                    <button
+                    <div
                       key={file.id}
-                      type="button"
-                      onClick={() => setSelectedFileId(file.id)}
-                      className={`w-full rounded-control border px-3 py-2 text-left transition-colors ${
+                      className={`group relative rounded-control border transition-colors ${
                         selectedFileId === file.id
                           ? "border-foreground bg-muted"
                           : "border-border hover:bg-muted/50"
                       }`}
                     >
-                      <div className="truncate text-sm font-medium">{file.filename}</div>
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        {file.mimetype} · {formatBytes(fileSize)}
-                      </div>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedFileId(file.id)}
+                        className="block w-full px-3 py-2 pr-9 text-left"
+                      >
+                        <div className="truncate text-sm font-medium">{file.filename}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {file.mimetype} · {formatBytes(fileSize)}
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          handleRemoveFile(file.id, file.filename)
+                        }}
+                        disabled={isPending}
+                        aria-label={t(locale, "expenses.removeFile")}
+                        title={t(locale, "expenses.removeFile")}
+                        className="absolute right-1 top-1/2 -translate-y-1/2 rounded-control p-1.5 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
                   )
                 })
               ) : (
@@ -643,14 +686,24 @@ export function ExpenseDetail({
 
             <div className="p-3">
               {selectedFile ? (
-                <iframe
-                  key={selectedFile.id}
-                  src={`/files/preview/${selectedFile.id}#view=FitH&toolbar=0&navpanes=0`}
-                  title={selectedFile.filename}
-                  className="block h-[calc(100vh-220px)] min-h-[520px] w-full rounded-control border bg-background"
-                />
+                selectedFile.mimetype === "application/pdf" || selectedFile.mimetype.startsWith("image/") ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={selectedFile.id}
+                    src={`/files/preview/${selectedFile.id}`}
+                    alt={selectedFile.filename}
+                    className="block h-auto max-h-[calc(100vh-220px)] w-full max-w-full rounded-control border bg-background object-contain lg:h-[calc(100vh-220px)] lg:max-h-[720px] lg:min-h-[520px] lg:w-auto lg:max-w-none"
+                  />
+                ) : (
+                  <iframe
+                    key={selectedFile.id}
+                    src={`/files/preview/${selectedFile.id}`}
+                    title={selectedFile.filename}
+                    className="block h-[calc(100vh-220px)] min-h-[520px] w-full rounded-control border bg-background lg:w-[480px]"
+                  />
+                )
               ) : (
-                <div className="flex min-h-[520px] items-center justify-center rounded-control border border-dashed text-sm text-muted-foreground">
+                <div className="flex min-h-[520px] items-center justify-center rounded-control border border-dashed text-sm text-muted-foreground lg:w-[480px]">
                   {files.length === 0 ? t(locale, "expenses.noFiles") : t(locale, "expenses.noPreviewAvailable")}
                 </div>
               )}

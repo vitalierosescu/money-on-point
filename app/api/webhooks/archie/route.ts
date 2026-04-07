@@ -8,12 +8,12 @@ import { getSelfHostedUser } from "@/models/users"
 
 type ArchieWebhookCandidate = { userId: string; settings: SettingsMap; secret: string }
 
-const ARCHIE_SETTING_CODES = [
+const ARCHIE_SETTING_CODES: string[] = [
   "archie_enabled",
   "archie_webhook_secret",
   "archie_webhook_target_url",
   "archie_group_uuids",
-] as const
+]
 
 function parseList(value?: string | null): string[] {
   if (!value) return []

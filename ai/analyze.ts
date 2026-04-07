@@ -38,6 +38,23 @@ export async function analyzeTransaction(
     console.log("LLM response:", result)
     console.log("LLM tokens used:", tokensUsed)
 
+    // Defensive: langchain's structured output can return undefined / null / {}
+    // when the model fails to produce a valid JSON match. Without this check,
+    // updateFile would be called with `cachedParseResult: undefined`, which
+    // Prisma silently treats as a no-op — the file ends up with NULL cache
+    // even though analyzeTransaction reported success.
+    const isUsable =
+      result !== null &&
+      result !== undefined &&
+      typeof result === "object" &&
+      Object.keys(result).length > 0
+    if (!isUsable) {
+      return {
+        success: false,
+        error: "AI returned no usable fields. The document may be unreadable or unsupported.",
+      }
+    }
+
     await updateFile(fileId, userId, { cachedParseResult: result })
 
     return {

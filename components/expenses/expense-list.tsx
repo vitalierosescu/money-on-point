@@ -23,7 +23,7 @@ import { formatLocaleCurrency, formatLocaleDate, formatLocaleNumber, type UiLoca
 import { cn } from "@/lib/utils"
 import type { ExpenseWithRelations } from "@/models/transactions"
 import type { Category, Field, Project } from "@/prisma/client"
-import { EyeOff, Loader2, Plus, Trash2 } from "lucide-react"
+import { Check, ChevronDown, EyeOff, Loader2, Plus, Search, Trash2, X } from "lucide-react"
 import { useRouter } from "next/navigation"
 import React, { useEffect, useMemo, useState, useTransition } from "react"
 import { toast } from "sonner"
@@ -56,24 +56,6 @@ function buildVisibilityMap(fields: Field[]): VisibilityMap {
     acc[field.code] = field.isVisibleInList
     return acc
   }, {})
-}
-
-function groupByMonth(expenses: ExpenseWithRelations[], locale: UiLocale) {
-  const groups: Record<string, { label: string; rows: ExpenseWithRelations[] }> = {}
-
-  for (const expense of expenses) {
-    const date = new Date(expense.issuedAt ?? expense.createdAt)
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
-    const label = formatLocaleDate(date, locale, { month: "long", year: "numeric" })
-    if (!groups[key]) {
-      groups[key] = { label, rows: [] }
-    }
-    groups[key].rows.push(expense)
-  }
-
-  return Object.entries(groups)
-    .sort((a, b) => b[0].localeCompare(a[0]))
-    .map(([, group]) => group)
 }
 
 function formatFieldValue(expense: ExpenseWithRelations, field: Field, defaultCurrency: string, locale: UiLocale) {
@@ -166,67 +148,164 @@ function getColumnWidthClass(fieldCode: string) {
   }
 }
 
-function getLookupChipClass(color?: string) {
+function getLookupPillStyle(color?: string) {
   if (!color) {
-    return "bg-secondary text-foreground"
+    return {
+      className: "border-border bg-secondary text-foreground",
+      style: undefined,
+    }
   }
 
-  return "text-foreground"
+  return {
+    className: "text-foreground",
+    style: {
+      backgroundColor: `${color}22`,
+      borderColor: `${color}55`,
+    },
+  }
 }
 
 function LookupCellEditor({
   value,
   items,
+  locale,
   placeholder,
   pending,
   onChange,
 }: {
   value: string
   items: Array<{ code: string; name: string; color?: string }>
+  locale: UiLocale
   placeholder: string
   pending: boolean
   onChange: (value: string) => void
 }) {
   const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState("")
   const selected = items.find((item) => item.code === value)
+  const filteredItems = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    if (!needle) {
+      return items
+    }
+
+    return items.filter((item) => item.name.toLowerCase().includes(needle))
+  }, [items, query])
+  const selectedStyle = getLookupPillStyle(selected?.color)
+
+  function handleSelect(nextValue: string) {
+    onChange(nextValue)
+    setOpen(false)
+    setQuery("")
+  }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen)
+        if (!nextOpen) {
+          setQuery("")
+        }
+      }}
+    >
       <PopoverTrigger asChild>
         <button
           type="button"
           className={cn(
-            "inline-flex min-h-7 min-w-[120px] items-center justify-between gap-2 rounded-full border px-3 py-1 text-left text-xs font-medium transition-colors hover:border-foreground/40",
-            selected ? getLookupChipClass(selected.color) : "border-dashed text-muted-foreground"
+            "flex h-[48px] w-full items-center justify-between gap-2 border border-transparent bg-background px-3 text-left text-sm transition-colors hover:bg-secondary/20",
+            open && "rounded-[6px] border-[#2d7ff9] ring-1 ring-[#2d7ff9]",
+            !open && "rounded-none",
+            !selected && "text-muted-foreground"
           )}
-          style={selected?.color ? { backgroundColor: `${selected.color}22`, borderColor: `${selected.color}55` } : undefined}
           onClick={(event) => event.stopPropagation()}
         >
-          <span className="truncate">{selected?.name ?? placeholder}</span>
-          {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <span className="text-muted-foreground">▾</span>}
+          <span className="min-w-0 flex-1 truncate">
+            {selected ? (
+              <span
+                className={cn(
+                  "inline-flex max-w-full items-center rounded-full border px-3 py-1 text-sm font-medium",
+                  selectedStyle.className
+                )}
+                style={selectedStyle.style}
+              >
+                <span className="truncate">{selected.name}</span>
+              </span>
+            ) : (
+              placeholder
+            )}
+          </span>
+          {pending ? (
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          )}
         </button>
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="w-56 p-3"
+        sideOffset={0}
+        className="w-[var(--radix-popover-trigger-width)] min-w-[240px] overflow-hidden rounded-[10px] border border-border p-0 shadow-popover"
         onClick={(event) => event.stopPropagation()}
       >
-        <NativeSelect
-          autoFocus
-          value={value}
-          disabled={pending}
-          onChange={(event) => {
-            onChange(event.target.value)
-            setOpen(false)
-          }}
-        >
-          <option value="">{placeholder}</option>
-          {items.map((item) => (
-            <option key={item.code} value={item.code}>
-              {item.name}
-            </option>
-          ))}
-        </NativeSelect>
+        <div className="border-b p-3">
+          <div className="flex items-center gap-2 rounded-[8px] border border-input bg-background px-3">
+            <Search className="h-4 w-4 text-muted-foreground" />
+            <input
+              autoFocus
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={locale === "nl" ? "Zoek een optie" : "Find an option"}
+              className="h-11 w-full border-0 bg-transparent text-base outline-none placeholder:text-muted-foreground"
+            />
+          </div>
+        </div>
+        <div className="max-h-72 space-y-1 overflow-y-auto p-3">
+          {filteredItems.map((item) => {
+            const itemStyle = getLookupPillStyle(item.color)
+            const isSelected = item.code === value
+
+            return (
+              <button
+                key={item.code}
+                type="button"
+                disabled={pending}
+                onClick={() => handleSelect(item.code)}
+                className={cn(
+                  "flex w-full items-center justify-between rounded-[8px] px-2 py-1.5 text-left transition-colors hover:bg-secondary/50",
+                  isSelected && "bg-secondary/50"
+                )}
+              >
+                <span
+                  className={cn(
+                    "inline-flex items-center rounded-full border px-3 py-1 text-sm font-medium",
+                    itemStyle.className
+                  )}
+                  style={itemStyle.style}
+                >
+                  {item.name}
+                </span>
+                {isSelected ? <Check className="h-4 w-4 text-muted-foreground" /> : null}
+              </button>
+            )
+          })}
+          {value ? (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => handleSelect("")}
+              className="flex w-full items-center justify-between rounded-[8px] px-2 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-secondary/50"
+            >
+              <span>{locale === "nl" ? "Waarde wissen" : "Clear value"}</span>
+              <X className="h-4 w-4" />
+            </button>
+          ) : null}
+          {filteredItems.length === 0 ? (
+            <div className="px-2 py-3 text-sm text-muted-foreground">
+              {locale === "nl" ? "Geen opties gevonden" : "No options found"}
+            </div>
+          ) : null}
+        </div>
       </PopoverContent>
     </Popover>
   )
@@ -367,12 +446,9 @@ export function ExpenseList({ expenses, categories, fields, projects, defaultCur
     return formatLocaleCurrency(sum, defaultCurrency, locale)
   }, [defaultCurrency, filtered, locale])
 
-  const grouped = useMemo(() => groupByMonth(filtered, locale), [filtered, locale])
-
   const allSelected = filtered.length > 0 && filtered.every((expense) => selectedIds.has(expense.id))
   const someSelected = filtered.some((expense) => selectedIds.has(expense.id)) && !allSelected
   const hiddenCount = fields.length - visibleFields.length
-  const totalColumnCount = visibleFields.length + 3
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
@@ -638,11 +714,11 @@ export function ExpenseList({ expenses, categories, fields, projects, defaultCur
         </div>
       )}
 
-      {grouped.length === 0 && (
+      {filtered.length === 0 && (
         <p className="text-center text-muted-foreground py-10 text-sm">{t(locale, "expenses.noResultsForStatus")}</p>
       )}
 
-      {grouped.length > 0 && (
+      {filtered.length > 0 && (
         <Table className="min-w-max">
           <TableHeader>
             <TableRow className="hover:bg-transparent">
@@ -656,109 +732,101 @@ export function ExpenseList({ expenses, categories, fields, projects, defaultCur
               {visibleFields.map((field) => (
                 <TableHead
                   key={field.code}
-                  className={cn("px-3 py-3 text-xs uppercase tracking-wide", getColumnWidthClass(field.code))}
+                  className={cn("border-r px-3 py-3 text-sm font-semibold text-foreground", getColumnWidthClass(field.code))}
                 >
                   {field.name}
                 </TableHead>
               ))}
-              <TableHead className="min-w-[140px] px-3 py-3 text-xs uppercase tracking-wide">
+              <TableHead className="min-w-[140px] border-r px-3 py-3 text-sm font-semibold text-foreground">
                 {t(locale, "expenses.tableStatus")}
               </TableHead>
-              <TableHead className="w-16 px-3 py-3 text-right">
+              <TableHead className="w-16 px-3 py-3 text-right text-foreground">
                 <AddFieldPopover locale={locale} isPending={isPending} onCreate={handleCreateField} />
               </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {grouped.map(({ label, rows }) => (
-              <React.Fragment key={label}>
-                <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={totalColumnCount} className="bg-secondary/50 px-4 py-1.5">
-                    <span className="text-xs font-medium uppercase tracking-widest text-muted-foreground">{label}</span>
+            {filtered.map((expense) => {
+              const statusMeta = getExpenseStatusMeta(expense.status, locale)
+              const isSelected = selectedIds.has(expense.id)
+
+              return (
+                <TableRow
+                  key={expense.id}
+                  className={cn("cursor-pointer", isSelected && "bg-secondary/60")}
+                  onClick={() => router.push(`/expenses/${expense.id}`)}
+                >
+                  <TableCell className="w-12 border-r px-4 py-3">
+                    <Checkbox
+                      checked={isSelected}
+                      onCheckedChange={() => toggleSelect(expense.id)}
+                      onClick={(event) => event.stopPropagation()}
+                      aria-label={`${t(locale, "expenses.detailFallbackTitle")} ${expense.id}`}
+                    />
                   </TableCell>
+
+                  {visibleFields.map((field) => {
+                    if (field.code === "categoryCode") {
+                      const key = `${expense.id}:${field.code}`
+                      const value = cellOverrides[key] ?? String(expense.categoryCode ?? "")
+
+                      return (
+                        <TableCell key={field.code} className={cn("border-r p-0", getColumnWidthClass(field.code))}>
+                          <LookupCellEditor
+                            value={value}
+                            items={categories.map((category) => ({
+                              code: category.code,
+                              name: category.name,
+                              color: category.color,
+                            }))}
+                            locale={locale}
+                            placeholder={t(locale, "expenses.selectCategory")}
+                            pending={pendingCellKey === key}
+                            onChange={(nextValue) => handleLookupUpdate(expense, "categoryCode", nextValue)}
+                          />
+                        </TableCell>
+                      )
+                    }
+
+                    if (field.code === "projectCode") {
+                      const key = `${expense.id}:${field.code}`
+                      const value = cellOverrides[key] ?? String(expense.projectCode ?? "")
+
+                      return (
+                        <TableCell key={field.code} className={cn("border-r p-0", getColumnWidthClass(field.code))}>
+                          <LookupCellEditor
+                            value={value}
+                            items={projects.map((project) => ({
+                              code: project.code,
+                              name: project.name,
+                              color: project.color,
+                            }))}
+                            locale={locale}
+                            placeholder={t(locale, "expenses.selectProject")}
+                            pending={pendingCellKey === key}
+                            onChange={(nextValue) => handleLookupUpdate(expense, "projectCode", nextValue)}
+                          />
+                        </TableCell>
+                      )
+                    }
+
+                    return (
+                      <TableCell key={field.code} className={cn("border-r px-3 py-3", getColumnWidthClass(field.code))}>
+                        {formatFieldValue(expense, field, defaultCurrency, locale)}
+                      </TableCell>
+                    )
+                  })}
+
+                  <TableCell className="border-r px-3 py-3">
+                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusMeta.className}`}>
+                      {statusMeta.label}
+                    </span>
+                  </TableCell>
+
+                  <TableCell className="px-3 py-3" />
                 </TableRow>
-
-                {rows.map((expense) => {
-                  const statusMeta = getExpenseStatusMeta(expense.status, locale)
-                  const isSelected = selectedIds.has(expense.id)
-
-                  return (
-                    <TableRow
-                      key={expense.id}
-                      className={cn("cursor-pointer", isSelected && "bg-secondary/60")}
-                      onClick={() => router.push(`/expenses/${expense.id}`)}
-                    >
-                      <TableCell className="w-12 px-4 py-3">
-                        <Checkbox
-                          checked={isSelected}
-                          onCheckedChange={() => toggleSelect(expense.id)}
-                          onClick={(event) => event.stopPropagation()}
-                          aria-label={`${t(locale, "expenses.detailFallbackTitle")} ${expense.id}`}
-                        />
-                      </TableCell>
-
-                      {visibleFields.map((field) => {
-                        if (field.code === "categoryCode") {
-                          const key = `${expense.id}:${field.code}`
-                          const value = cellOverrides[key] ?? String(expense.categoryCode ?? "")
-
-                          return (
-                            <TableCell key={field.code} className={cn("px-3 py-3", getColumnWidthClass(field.code))}>
-                              <LookupCellEditor
-                                value={value}
-                                items={categories.map((category) => ({
-                                  code: category.code,
-                                  name: category.name,
-                                  color: category.color,
-                                }))}
-                                placeholder={t(locale, "expenses.selectCategory")}
-                                pending={pendingCellKey === key}
-                                onChange={(nextValue) => handleLookupUpdate(expense, "categoryCode", nextValue)}
-                              />
-                            </TableCell>
-                          )
-                        }
-
-                        if (field.code === "projectCode") {
-                          const key = `${expense.id}:${field.code}`
-                          const value = cellOverrides[key] ?? String(expense.projectCode ?? "")
-
-                          return (
-                            <TableCell key={field.code} className={cn("px-3 py-3", getColumnWidthClass(field.code))}>
-                              <LookupCellEditor
-                                value={value}
-                                items={projects.map((project) => ({
-                                  code: project.code,
-                                  name: project.name,
-                                  color: project.color,
-                                }))}
-                                placeholder={t(locale, "expenses.selectProject")}
-                                pending={pendingCellKey === key}
-                                onChange={(nextValue) => handleLookupUpdate(expense, "projectCode", nextValue)}
-                              />
-                            </TableCell>
-                          )
-                        }
-
-                        return (
-                          <TableCell key={field.code} className={cn("px-3 py-3", getColumnWidthClass(field.code))}>
-                            {formatFieldValue(expense, field, defaultCurrency, locale)}
-                          </TableCell>
-                        )
-                      })}
-
-                      <TableCell className="px-3 py-3">
-                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusMeta.className}`}>
-                          {statusMeta.label}
-                        </span>
-                      </TableCell>
-
-                      <TableCell className="px-3 py-3" />
-                    </TableRow>
-                  )
-                })}
-              </React.Fragment>
-            ))}
+              )
+            })}
           </TableBody>
         </Table>
       )}

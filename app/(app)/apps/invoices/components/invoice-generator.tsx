@@ -9,16 +9,15 @@ import { Currency, Customer, User } from "@/prisma/client"
 import { createInvoiceAction, updateInvoiceAction } from "@/app/(app)/invoices/actions"
 import { FileDown, Loader2, Save, TextSelect, X } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { startTransition, useMemo, useReducer, useState } from "react"
+import { useMemo, useReducer, useState } from "react"
 import {
   addNewTemplateAction,
   deleteTemplateAction,
   generateInvoicePDF,
-  saveInvoiceAsTransactionAction,
 } from "../actions"
 import defaultTemplates, { InvoiceTemplate } from "../default-templates"
 import { InvoiceAppData } from "../page"
-import { InvoiceFormData, InvoicePage } from "./invoice-page"
+import { InvoiceFormAction, InvoiceFormData, InvoicePage } from "./invoice-page"
 
 function recalculateTaxAmounts(state: InvoiceFormData): InvoiceFormData {
   const subtotal = state.items.reduce((sum, item) => sum + item.subtotal, 0)
@@ -31,7 +30,7 @@ function recalculateTaxAmounts(state: InvoiceFormData): InvoiceFormData {
   }
 }
 
-function invoiceFormReducer(state: InvoiceFormData, action: any): InvoiceFormData {
+function invoiceFormReducer(state: InvoiceFormData, action: InvoiceFormAction): InvoiceFormData {
   switch (action.type) {
     case "SET_FORM":
       return action.payload
@@ -116,14 +115,13 @@ export function InvoiceGenerator({
       return { ...base, invoiceNumber: nextInvoiceNumber }
     }
     return base
-  }, [])
+  }, [initialFormDataProp, nextInvoiceNumber, templates])
 
   const [selectedTemplate, setSelectedTemplate] = useState<string>(templates[0].name)
   const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false)
   const [newTemplateName, setNewTemplateName] = useState("")
   const [formData, dispatch] = useReducer(invoiceFormReducer, initialFormData)
   const [isPdfLoading, setIsPdfLoading] = useState(false)
-  const [isSavingTransaction, setIsSavingTransaction] = useState(false)
   const [isSavingInvoice, setIsSavingInvoice] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(initialCustomer ?? null)
 
@@ -321,32 +319,6 @@ export function InvoiceGenerator({
       alert("Failed to update invoice. Please try again.")
     } finally {
       setIsSavingInvoice(false)
-    }
-  }
-
-  // Accept optional event, prevent default only if present
-  const handleSaveAsTransaction = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault()
-    setIsSavingTransaction(true)
-
-    try {
-      const data = formData.businessLogo
-        ? { ...formData, businessLogo: await fetchAsBase64(formData.businessLogo) }
-        : formData
-
-      const result = await saveInvoiceAsTransactionAction(data)
-      if (result.success && result.data?.id) {
-        startTransition(() => {
-          router.push(`/invoices`)
-        })
-      } else {
-        alert(result.error || "Failed to save as transaction")
-      }
-    } catch (error) {
-      console.error("Error saving as transaction:", error)
-      alert("Failed to save as transaction. Please try again.")
-    } finally {
-      setIsSavingTransaction(false)
     }
   }
 

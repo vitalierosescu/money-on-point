@@ -5,6 +5,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import AnalyzeForm from "@/components/unsorted/analyze-form"
+import { BulkAnalyzeButton } from "@/components/unsorted/bulk-analyze-button"
 import { getCurrentUser } from "@/lib/auth"
 import config from "@/lib/config"
 import { t } from "@/lib/i18n"
@@ -45,10 +46,13 @@ export default async function UnsortedPage({
   const remainingCount = currentFile ? Math.max(files.length - (currentIndex + 1), 0) : 0
   const fileCount = formatLocaleNumber(files.length, locale)
   const fileLabel = files.length === 1 ? t(locale, "unsorted.file") : t(locale, "unsorted.files")
+  const needsReviewCount = files.filter(
+    (file) => file.cachedParseResult !== null && file.cachedParseResult !== undefined
+  ).length
 
   return (
     <PageShell maxWidth="page">
-      <header className="flex items-center justify-between">
+      <header className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">
             {t(locale, "unsorted.title", { count: fileCount, filesLabel: fileLabel })}
@@ -65,7 +69,15 @@ export default async function UnsortedPage({
               })}
             </p>
           )}
+          {needsReviewCount > 0 && (
+            <p className="mt-2 text-sm font-medium text-warning">
+              {t(locale, "unsorted.needsReviewCount", {
+                count: formatLocaleNumber(needsReviewCount, locale),
+              })}
+            </p>
+          )}
         </div>
+        {files.length > 0 && <BulkAnalyzeButton locale={locale} />}
       </header>
 
       {config.selfHosted.isEnabled &&

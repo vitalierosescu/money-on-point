@@ -53,9 +53,22 @@ export interface InvoiceFormData {
   summaryTotalLabel: string
 }
 
+export type InvoiceFormAction =
+  | { type: "SET_FORM"; payload: InvoiceFormData }
+  | { type: "UPDATE_FIELD"; field: keyof InvoiceFormData; value: InvoiceFormData[keyof InvoiceFormData] }
+  | { type: "ADD_ITEM" }
+  | { type: "UPDATE_ITEM"; index: number; field: keyof InvoiceItem; value: InvoiceItem[keyof InvoiceItem] }
+  | { type: "REMOVE_ITEM"; index: number }
+  | { type: "ADD_TAX" }
+  | { type: "UPDATE_TAX"; index: number; field: keyof AdditionalTax; value: AdditionalTax[keyof AdditionalTax] }
+  | { type: "REMOVE_TAX"; index: number }
+  | { type: "ADD_FEE" }
+  | { type: "UPDATE_FEE"; index: number; field: keyof AdditionalFee; value: AdditionalFee[keyof AdditionalFee] }
+  | { type: "REMOVE_FEE"; index: number }
+
 interface InvoicePageProps {
   invoiceData: InvoiceFormData
-  dispatch: React.Dispatch<any>
+  dispatch: React.Dispatch<InvoiceFormAction>
   currencies: Currency[]
 }
 
