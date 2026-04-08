@@ -3,7 +3,6 @@ import { HomeHeroWidget } from "@/components/dashboard/home-hero-widget"
 import { StatsWidget } from "@/components/dashboard/stats-widget"
 import DashboardUnsortedWidget from "@/components/dashboard/unsorted-widget"
 import { WelcomeWidget } from "@/components/dashboard/welcome-widget"
-import { WorkQueueWidget } from "@/components/dashboard/work-queue-widget"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PageShell } from "@/components/ui/page-shell"
@@ -74,13 +73,6 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         activePeppolEnvironment={activePeppolEnvironment}
         activePeppolReady={activePeppolReady}
         productionPeppolReady={productionPeppolReady}
-      />
-
-      <WorkQueueWidget
-        unsortedCount={unsortedFilesCount}
-        expensesToPay={expensesToPay}
-        overdueInvoices={overdueInvoices}
-        blockedInvoices={blockedInvoices}
       />
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_380px] xl:items-stretch">
