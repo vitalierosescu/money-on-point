@@ -319,6 +319,7 @@ model Invoice {
   deliverySentAt   DateTime? @map("delivery_sent_at")
   providerReferenceId String? @map("provider_reference_id")
   providerError    String? @map("provider_error")
+  peppolEnvironment String? @map("peppol_environment")
   emailCopyStatus  String @default("not_sent") @map("email_copy_status")
   emailCopySentAt  DateTime? @map("email_copy_sent_at")
   emailCopyRecipients Json? @map("email_copy_recipients")

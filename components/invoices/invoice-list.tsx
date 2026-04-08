@@ -487,7 +487,21 @@ export function InvoiceList({
                     </td>
                     <td className="px-3 py-3 text-sm">
                       <div className="flex flex-col gap-0.5">
-                        <span>{getInvoiceDeliveryMethodLabel(getInvoiceDeliveryMethod(invoice))}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span>{getInvoiceDeliveryMethodLabel(getInvoiceDeliveryMethod(invoice))}</span>
+                          {invoice.peppolEnvironment && (
+                            <span
+                              className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
+                                invoice.peppolEnvironment === "production"
+                                  ? "bg-success/15 text-success"
+                                  : "bg-warning/15 text-warning"
+                              }`}
+                              title={`Sent via ${invoice.peppolEnvironment === "production" ? "Production" : "Playground"} Peppol environment`}
+                            >
+                              {invoice.peppolEnvironment === "production" ? "Prod" : "Playground"}
+                            </span>
+                          )}
+                        </div>
                         <span className={`text-xs ${readiness.isReady ? "text-success" : "text-warning"}`}>
                           {readiness.isReady ? t(locale, "invoices.readyLabel") : t(locale, "invoices.blockedLabel")}
                         </span>

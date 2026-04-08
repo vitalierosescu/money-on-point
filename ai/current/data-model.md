@@ -18,7 +18,7 @@
 ## Integration Model Notes
 
 - Recommand/PEPPOL config lives in settings
-- Invoice delivery metadata lives on invoices, including official delivery state, PEPPOL fallback exceptions, and courtesy-email audit fields
+- Invoice delivery metadata lives on invoices, including official delivery state, PEPPOL fallback exceptions, courtesy-email audit fields, and `peppolEnvironment` (the Recommand environment used at last send attempt: `playground`, `production`, or null for historical rows that predate the field)
 - Archie integration depends on settings plus webhook/manual sync flows
 
 ## Update Rule

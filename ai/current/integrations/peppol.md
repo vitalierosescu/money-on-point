@@ -18,6 +18,10 @@
 - Keep Playground configured for regression testing
 - Recommand is PEPPOL-only in the current app; direct invoice emails are sent through Resend
 
+## Environment Tracking
+
+Every PEPPOL send (successful or failed) writes the active Recommand environment to `Invoice.peppolEnvironment` via `lib/peppol-send.ts`. The invoices list renders a small color-coded chip next to the delivery method label: amber `Playground` or green `Prod`. Historical invoices sent before this field existed stay unlabeled (null), so only new sends show the chip.
+
 ## Current Limit
 
 TaxHacker currently supports outbound PEPPOL only. Do not assume inbound collection, sync, or document ingestion exists.

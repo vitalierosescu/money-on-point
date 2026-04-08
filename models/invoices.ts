@@ -122,6 +122,7 @@ export type CreateInvoiceData = {
   deliverySentAt?: Date | null
   providerReferenceId?: string | null
   providerError?: string | null
+  peppolEnvironment?: string | null
   emailCopyStatus?: string | null
   emailCopySentAt?: Date | null
   emailCopyRecipients?: unknown
@@ -181,6 +182,7 @@ export const createInvoice = async (
       deliverySentAt: data.deliverySentAt,
       providerReferenceId: data.providerReferenceId,
       providerError: data.providerError,
+      peppolEnvironment: data.peppolEnvironment ?? null,
       emailCopyStatus: normalizeEmailCopyStatus(data.emailCopyStatus),
       emailCopySentAt: data.emailCopySentAt,
       emailCopyRecipients: data.emailCopyRecipients as Prisma.InputJsonValue | undefined,
@@ -216,6 +218,7 @@ export const updateInvoice = async (
     emailCopyProvider,
     deliveryExceptionCode,
     deliveryExceptionNote,
+    peppolEnvironment,
     ...rest
   } = data
   const updateData: Prisma.InvoiceUpdateInput = { ...rest }
@@ -260,6 +263,9 @@ export const updateInvoice = async (
   }
   if (deliveryExceptionNote !== undefined) {
     updateData.deliveryExceptionNote = deliveryExceptionNote
+  }
+  if (peppolEnvironment !== undefined) {
+    updateData.peppolEnvironment = peppolEnvironment
   }
 
   // While the invoice is still a draft, refresh the customer snapshot from

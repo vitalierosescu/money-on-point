@@ -3,6 +3,7 @@ import { getInvoiceDeliveryMethod } from "@/lib/invoice-delivery"
 import { validateInvoiceForPeppolDelivery, type InvoiceFieldErrors } from "@/lib/invoice-validation"
 import { buildRecommandInvoicePayload } from "@/lib/recommand-payload"
 import { sendInvoiceViaRecommand, verifyPeppolRecipient } from "@/lib/recommand"
+import { getActiveRecommandEnvironment } from "@/lib/recommand-settings"
 import { prisma } from "@/lib/db"
 import { getSettings } from "@/models/settings"
 import { getUserById } from "@/models/users"
@@ -26,6 +27,7 @@ export async function sendInvoiceViaPeppolForUser(userId: string, invoiceId: str
   }
 
   const settings = await getSettings(userId)
+  const environment = getActiveRecommandEnvironment(settings)
   const invoice = await prisma.invoice.findFirst({
     where: { id: invoiceId, userId },
     include: { customer: true },
@@ -68,6 +70,7 @@ export async function sendInvoiceViaPeppolForUser(userId: string, invoiceId: str
         deliveryMethod: "peppol",
         deliveryStatus: "failed",
         providerError: validation.message,
+        peppolEnvironment: environment,
       },
     })
     return { success: false, error: validation.message, fieldErrors: validation.fieldErrors }
@@ -89,6 +92,7 @@ export async function sendInvoiceViaPeppolForUser(userId: string, invoiceId: str
           providerError: verification.message ?? "Recipient is not registered in the PEPPOL network.",
           deliveryExceptionCode: "customer_not_peppol_ready",
           deliveryExceptionNote: verification.message ?? "Recipient is not registered in the PEPPOL network.",
+          peppolEnvironment: environment,
         },
       })
       return { success: false, error: verification.message ?? "Recipient is not registered in the PEPPOL network." }
@@ -110,6 +114,7 @@ export async function sendInvoiceViaPeppolForUser(userId: string, invoiceId: str
           deliveryMethod: "peppol",
           deliveryStatus: "failed",
           providerError,
+          peppolEnvironment: environment,
         },
       })
       return { success: false, error: providerError }
@@ -125,6 +130,7 @@ export async function sendInvoiceViaPeppolForUser(userId: string, invoiceId: str
         providerError: null,
         deliveryExceptionCode: null,
         deliveryExceptionNote: null,
+        peppolEnvironment: environment,
       },
     })
 
@@ -137,6 +143,7 @@ export async function sendInvoiceViaPeppolForUser(userId: string, invoiceId: str
         deliveryMethod: "peppol",
         deliveryStatus: "failed",
         providerError: message,
+        peppolEnvironment: environment,
       },
     })
     return { success: false, error: message }
