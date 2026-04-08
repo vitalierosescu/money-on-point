@@ -1,5 +1,6 @@
 import { UploadButton } from "@/components/files/upload-button"
 import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
 import { SectionLabel } from "@/components/ui/section-label"
 import { getRecommandEnvironmentLabel, type RecommandEnvironment } from "@/lib/recommand-settings"
 import { ArrowRight, Receipt, Upload } from "lucide-react"
@@ -65,7 +66,7 @@ export function HomeHeroWidget({
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_360px] xl:items-start">
         <div>
           <SectionLabel>Today&apos;s desk</SectionLabel>
-          <h1 className="mt-2 text-3xl font-semibold font-heading tracking-[-0.02em] text-balance">
+          <h1 className="mt-2 text-page font-semibold font-heading tracking-[-0.02em] text-balance">
             Keep bookkeeping moving, {firstName}.
           </h1>
 
@@ -87,7 +88,7 @@ export function HomeHeroWidget({
           </div>
         </div>
 
-        <div className="rounded-card border border-border bg-background p-4">
+        <Card className="p-4">
           <SectionLabel>What needs attention</SectionLabel>
 
           <div className="mt-3 grid grid-cols-2 gap-2">
@@ -97,7 +98,7 @@ export function HomeHeroWidget({
                 href={item.href}
                 className="rounded-card border border-border px-3 py-2 transition-colors hover:border-primary"
               >
-                <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{item.label}</div>
+                <SectionLabel>{item.label}</SectionLabel>
                 <div className="mt-1 text-2xl font-semibold font-heading tabular-nums">{item.value}</div>
               </Link>
             ))}
@@ -110,7 +111,7 @@ export function HomeHeroWidget({
             <span className="text-foreground">{nextMove.copy}</span>
             <ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-1" />
           </Link>
-        </div>
+        </Card>
       </div>
     </section>
   )
