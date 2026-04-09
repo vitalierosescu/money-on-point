@@ -10,8 +10,10 @@ import { toast } from "sonner"
 
 export type ExtractionResult = {
   fileId: string
+  filePath: string
   extracted: ExtractedInvoice
   matchedCustomers: Customer[]
+  previewDataUrls: string[]
   chosenCustomerId: string | null
 }
 
@@ -62,8 +64,10 @@ export function ExtractFromPdfPanel({
 
       onExtracted({
         fileId: result.data.fileId,
+        filePath: result.data.filePath,
         extracted: result.data.extracted,
         matchedCustomers: result.data.matchedCustomers,
+        previewDataUrls: result.data.previewDataUrls,
         chosenCustomerId,
       })
 
@@ -134,7 +138,7 @@ export function ExtractFromPdfPanel({
 
   // Filled state — show what was extracted and let user pick a customer
   const { extracted, matchedCustomers, chosenCustomerId } = currentResult
-  const extractedCustomerName = extracted.customer.name ?? "(no name extracted)"
+  const extractedCustomerName = extracted.customer.name || "(no name extracted)"
 
   return (
     <div className="rounded-lg border border-primary/30 bg-primary/5 p-5 mb-6">
@@ -157,11 +161,11 @@ export function ExtractFromPdfPanel({
                   <dd>{extracted.invoiceNumber}</dd>
                 </>
               )}
-              {extracted.total !== null && (
+              {extracted.total > 0 && (
                 <>
                   <dt className="text-muted-foreground">Total:</dt>
                   <dd>
-                    {extracted.currency ?? "EUR"} {extracted.total.toFixed(2)}
+                    {extracted.currency || "EUR"} {extracted.total.toFixed(2)}
                   </dd>
                 </>
               )}

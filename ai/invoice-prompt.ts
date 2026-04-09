@@ -16,9 +16,14 @@ return a JSON object matching the provided schema.
 ## Rules
 
 - Return strict JSON matching the schema. No commentary, no markdown.
-- If a field is not present in the document, set it to null (do not guess).
+- Every field in the schema is required. If a field is not present in
+  the document, use an EMPTY STRING for text fields and 0 for numeric
+  fields. Do not guess or fabricate values.
+- Never return null — the schema does not allow null values. Use empty
+  string or 0 to represent missing data.
 - Dates must be in ISO format YYYY-MM-DD. Convert from any source format
-  (14/03/2025, 14 March 2025, Mar 14 2025) into YYYY-MM-DD.
+  (14/03/2025, 14 March 2025, Mar 14 2025) into YYYY-MM-DD. If there's
+  no date at all, use an empty string.
 - Currency must be a 3-letter ISO code. Default to EUR if no explicit
   currency symbol is visible. A "€" symbol maps to EUR, "$" to USD, "£" to GBP.
 - All monetary amounts are decimals in the invoice currency, e.g. 95.50.

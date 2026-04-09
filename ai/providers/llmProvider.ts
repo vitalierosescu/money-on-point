@@ -104,13 +104,18 @@ async function requestLLMUnified(config: LLMConfig, req: LLMRequest): Promise<LL
 }
 
 export async function requestLLM(settings: LLMSettings, req: LLMRequest): Promise<LLMResponse> {
+  const skipped: string[] = []
+  const failed: Array<{ provider: LLMProvider; error: string }> = []
+
   for (const config of settings.providers) {
     if (!config.model) {
       console.info("Skipping provider:", config.provider, "(no model)")
+      skipped.push(`${config.provider} (no model)`)
       continue
     }
     if (config.provider === "openai_compatible" ? !config.baseUrl : !config.apiKey) {
       console.info("Skipping provider:", config.provider, "(not configured)")
+      skipped.push(`${config.provider} (not configured)`)
       continue
     }
     console.info("Use provider:", config.provider)
@@ -119,14 +124,29 @@ export async function requestLLM(settings: LLMSettings, req: LLMRequest): Promis
 
     if (!response.error) {
       return response
-    } else {
-      console.error(response.error)
     }
+
+    console.error(`${config.provider} error:`, response.error)
+    failed.push({ provider: config.provider, error: response.error })
+  }
+
+  // Build a useful error message. When at least one provider was actually
+  // tried, surface the real underlying errors so users can diagnose. When
+  // nothing was tried at all, say so explicitly and point to Settings.
+  let error: string
+  if (failed.length > 0) {
+    const failureDetail = failed.map(({ provider, error }) => `${provider}: ${error}`).join(" | ")
+    const skippedDetail = skipped.length > 0 ? ` Skipped: ${skipped.join(", ")}.` : ""
+    error = `LLM request failed. ${failureDetail}.${skippedDetail}`
+  } else if (skipped.length > 0) {
+    error = `No LLM provider is usable. ${skipped.join(", ")}. Configure a provider in Settings → LLM.`
+  } else {
+    error = "No LLM providers defined. Configure at least one in Settings → LLM."
   }
 
   return {
     output: {},
     provider: settings.providers[0]?.provider || "openai",
-    error: "All LLM providers failed or are not configured",
+    error,
   }
 }

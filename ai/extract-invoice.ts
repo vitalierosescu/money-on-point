@@ -24,8 +24,18 @@ import { requestLLM } from "./providers/llmProvider"
 
 export type InvoiceExtractionResult = {
   fileId: string
+  /** Path of the uploaded PDF relative to the user's uploads directory.
+   *  Used later to set `Invoice.pdfPath` when the user saves, so the
+   *  original PDF becomes the invoice's permanent attachment. */
+  filePath: string
   extracted: ExtractedInvoice
   matchedCustomers: Customer[]
+  /** Data-URL base64 preview images of the uploaded PDF (one per page,
+   *  up to the MAX_PAGES_TO_ANALYZE cap in `ai/attachments.ts`). The
+   *  client renders these in the live preview pane instead of the
+   *  reconstructed `<InvoicePreview>` so users see exactly the document
+   *  they imported. */
+  previewDataUrls: string[]
   tokensUsed: number
 }
 
@@ -100,14 +110,33 @@ export async function extractInvoiceFromPdfAction(
     const settings = await getSettings(user.id)
     const llmSettings = getLLMSettings(settings)
 
-    if (!llmSettings.providers.some((p) => p.apiKey || p.baseUrl)) {
+    // A provider is actually usable only when it has both a model name
+    // and the credentials its transport needs (openai_compatible needs
+    // baseUrl, everything else needs apiKey). This check mirrors the
+    // skipping logic inside `requestLLM` so we fail fast with a clear
+    // message instead of running the whole upload + preview pipeline.
+    const usableProviders = llmSettings.providers.filter((p) => {
+      if (!p.model) return false
+      if (p.provider === "openai_compatible") return Boolean(p.baseUrl)
+      return Boolean(p.apiKey)
+    })
+
+    if (usableProviders.length === 0) {
       return {
         success: false,
-        error: "No LLM provider is configured. Add one in Settings → LLM.",
+        error:
+          "No LLM provider is usable. Open Settings → LLM and add an API key + model for at least one provider.",
       }
     }
 
     const attachments = await loadAttachmentsForAI(user, fileRecord)
+
+    // The same base64 preview images that get sent to the LLM are reused
+    // by the client to show the uploaded PDF in the live preview pane.
+    // Zero extra disk/CPU cost since they're already generated.
+    const previewDataUrls = attachments.map(
+      (attachment) => `data:${attachment.contentType};base64,${attachment.base64}`
+    )
 
     const response = await requestLLM(llmSettings, {
       prompt: INVOICE_EXTRACTION_PROMPT,
@@ -148,8 +177,10 @@ export async function extractInvoiceFromPdfAction(
       success: true,
       data: {
         fileId: fileRecord.id,
+        filePath: fileRecord.path,
         extracted: result,
         matchedCustomers,
+        previewDataUrls,
         tokensUsed: response.tokensUsed ?? 0,
       },
     }

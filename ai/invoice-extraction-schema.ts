@@ -4,47 +4,60 @@
  * in `ai/schema.ts`, which is transaction-field specific) so we can tune
  * field descriptions for invoice semantics.
  *
- * The LLM is called via Langchain's `withStructuredOutput`, which enforces
- * this schema. Every property is required + nullable rather than optional,
- * because some providers (notably OpenAI's strict JSON schema mode) only
- * accept schemas where every property in `required` is present on every
- * response. Using `type: ["string", "null"]` keeps the schema strict while
- * letting the model omit fields it cannot confidently extract.
+ * ## Compatibility notes
+ *
+ * This schema is passed through Langchain's `withStructuredOutput` to
+ * whichever provider is configured in Settings → LLM. Each provider
+ * enforces it differently:
+ *
+ * - **OpenAI (strict mode)** accepts JSON Schema Draft 2020-12 with
+ *   `type: ["string", "null"]` unions for nullability.
+ * - **Google Gemini** uses an OpenAPI 3.0 subset that ONLY accepts a
+ *   single-value `type`. Arrays of types cause a 400 from the
+ *   `generativelanguage.googleapis.com` endpoint: "Proto field is not
+ *   repeating, cannot start list". See the session on 2026-04-09.
+ * - **Mistral** is similar to OpenAI but less strict.
+ *
+ * To be compatible with all three, this schema uses SINGLE types only
+ * (never `type: ["x", "null"]`) and treats "missing" values as empty
+ * strings or 0. The prompt in `ai/invoice-prompt.ts` instructs the model
+ * to do the same, and the downstream transform in
+ * `components/invoices/new-invoice-client.tsx` maps empty/zero values
+ * back to sensible defaults before they reach `InvoiceGenerator`.
  */
 
 export const INVOICE_EXTRACTION_SCHEMA: Record<string, unknown> = {
   type: "object",
   properties: {
     invoiceNumber: {
-      type: ["string", "null"],
-      description: "The invoice number as it appears on the document, verbatim.",
+      type: "string",
+      description: "The invoice number as it appears on the document, verbatim. Empty string if not present.",
     },
     issuedAt: {
-      type: ["string", "null"],
-      description: "Issue date in ISO format YYYY-MM-DD.",
+      type: "string",
+      description: "Issue date in ISO format YYYY-MM-DD. Empty string if not present.",
     },
     dueDate: {
-      type: ["string", "null"],
-      description: "Due date in ISO format YYYY-MM-DD. If the invoice has no due date, use null.",
+      type: "string",
+      description: "Due date in ISO format YYYY-MM-DD. Empty string if the invoice has no due date.",
     },
     currency: {
-      type: ["string", "null"],
+      type: "string",
       description: "3-letter ISO currency code (EUR, USD, GBP). Default to EUR if not explicitly stated.",
     },
     customer: {
       type: "object",
-      description: "The recipient (bill-to) of the invoice.",
+      description: "The recipient (bill-to) of the invoice. Not the sender / invoicing party.",
       properties: {
-        name: { type: ["string", "null"], description: "Customer legal name" },
-        email: { type: ["string", "null"], description: "Customer email if present" },
-        vatNumber: { type: ["string", "null"], description: "VAT number (e.g. BE0123456789)" },
-        country: { type: ["string", "null"], description: "2-letter ISO country code (BE, NL, FR)" },
-        street: { type: ["string", "null"], description: "Street address line" },
-        zipCode: { type: ["string", "null"], description: "Postal code" },
-        city: { type: ["string", "null"], description: "City" },
+        name: { type: "string", description: "Customer legal name. Empty string if not found." },
+        email: { type: "string", description: "Customer email if present, empty string otherwise." },
+        vatNumber: { type: "string", description: "VAT number (e.g. BE0123456789), empty string otherwise." },
+        country: { type: "string", description: "2-letter ISO country code (BE, NL, FR), empty string otherwise." },
+        street: { type: "string", description: "Street address line, empty string otherwise." },
+        zipCode: { type: "string", description: "Postal code, empty string otherwise." },
+        city: { type: "string", description: "City, empty string otherwise." },
       },
       required: ["name", "email", "vatNumber", "country", "street", "zipCode", "city"],
-      additionalProperties: false,
     },
     items: {
       type: "array",
@@ -64,28 +77,27 @@ export const INVOICE_EXTRACTION_SCHEMA: Record<string, unknown> = {
           },
         },
         required: ["name", "quantity", "unitPrice", "taxRate"],
-        additionalProperties: false,
       },
     },
     subtotal: {
-      type: ["number", "null"],
-      description: "Subtotal (excl. VAT) as a decimal in the invoice currency.",
+      type: "number",
+      description: "Subtotal (excl. VAT) as a decimal in the invoice currency. 0 if not present.",
     },
     taxTotal: {
-      type: ["number", "null"],
-      description: "Total VAT/tax amount as a decimal in the invoice currency.",
+      type: "number",
+      description: "Total VAT/tax amount as a decimal in the invoice currency. 0 if not present.",
     },
     total: {
-      type: ["number", "null"],
-      description: "Grand total (incl. VAT) as a decimal in the invoice currency.",
+      type: "number",
+      description: "Grand total (incl. VAT) as a decimal in the invoice currency. 0 if not present.",
     },
     notes: {
-      type: ["string", "null"],
-      description: "Any free-text notes or terms at the bottom of the invoice.",
+      type: "string",
+      description: "Any free-text notes or terms at the bottom of the invoice. Empty string if none.",
     },
     paymentReference: {
-      type: ["string", "null"],
-      description: "Structured communication or payment reference (OGM, BBA, etc.) if present.",
+      type: "string",
+      description: "Structured communication / payment reference (OGM, BBA, etc.). Empty string if none.",
     },
   },
   required: [
@@ -101,22 +113,27 @@ export const INVOICE_EXTRACTION_SCHEMA: Record<string, unknown> = {
     "notes",
     "paymentReference",
   ],
-  additionalProperties: false,
 }
 
+/**
+ * The runtime shape we get back from the LLM. All scalars are concrete
+ * (no `| null`) because the schema uses single types; "missing" is
+ * represented as empty string or 0 and the caller is responsible for
+ * treating those as absent where it matters.
+ */
 export type ExtractedInvoice = {
-  invoiceNumber: string | null
-  issuedAt: string | null
-  dueDate: string | null
-  currency: string | null
+  invoiceNumber: string
+  issuedAt: string
+  dueDate: string
+  currency: string
   customer: {
-    name: string | null
-    email: string | null
-    vatNumber: string | null
-    country: string | null
-    street: string | null
-    zipCode: string | null
-    city: string | null
+    name: string
+    email: string
+    vatNumber: string
+    country: string
+    street: string
+    zipCode: string
+    city: string
   }
   items: Array<{
     name: string
@@ -124,9 +141,9 @@ export type ExtractedInvoice = {
     unitPrice: number
     taxRate: number
   }>
-  subtotal: number | null
-  taxTotal: number | null
-  total: number | null
-  notes: string | null
-  paymentReference: string | null
+  subtotal: number
+  taxTotal: number
+  total: number
+  notes: string
+  paymentReference: string
 }

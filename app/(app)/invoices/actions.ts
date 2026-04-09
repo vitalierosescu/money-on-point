@@ -140,6 +140,70 @@ export async function createInvoiceAction(data: CreateInvoiceData): Promise<Invo
   return { success: true, data: { id: invoice.id } }
 }
 
+/**
+ * Save an invoice that the user imported from an uploaded PDF.
+ *
+ * Differs from `createInvoiceAction` in three important ways:
+ * 1. Bypasses `validateInvoiceDraftOrSent` — imported invoices were
+ *    originally sent via another system and shouldn't be gated on
+ *    current-state Peppol readiness rules.
+ * 2. Sets `pdfPath` to the uploaded File's path so the original PDF
+ *    becomes the invoice's permanent attachment and the File record is
+ *    marked as reviewed (so it disappears from the Unsorted queue).
+ * 3. Creates a linked income transaction only when the invoice is saved
+ *    as "sent" or "paid" — not for drafts — matching the semantics that
+ *    a draft invoice hasn't actually happened yet.
+ *
+ * Used by the `<InvoiceGenerator importMode />` flow after the user
+ * reviews and edits the LLM-extracted fields.
+ */
+export async function saveImportedInvoiceAction(
+  data: CreateInvoiceData,
+  options: { uploadedFileId: string | null; uploadedFilePath: string | null }
+): Promise<InvoiceActionResult<{ id: string }>> {
+  const user = await getCurrentUser()
+
+  const invoice = await createInvoice(user.id, {
+    ...data,
+    pdfPath: options.uploadedFilePath ?? null,
+  })
+
+  // Only create the linked accounting transaction when the invoice is
+  // considered actually sent. Drafts have no accounting impact.
+  if (data.status && data.status !== "draft") {
+    const transaction = await createTransaction(user.id, {
+      name: invoice.invoiceNumber,
+      merchant: null,
+      total: invoice.total,
+      currencyCode: invoice.currency,
+      type: "income",
+      issuedAt: invoice.issuedAt,
+      categoryCode: "invoice",
+      customerId: invoice.customerId ?? null,
+    })
+    await prisma.invoice.update({
+      where: { id: invoice.id, userId: user.id },
+      data: { transactionId: transaction.id },
+    })
+  }
+
+  // Move the uploaded file out of the Unsorted queue so it doesn't
+  // clutter that view. It stays on disk as the invoice's attachment.
+  if (options.uploadedFileId) {
+    try {
+      await updateFile(options.uploadedFileId, user.id, { isReviewed: true })
+    } catch (error) {
+      // Non-fatal — the invoice is already saved, the user just gets
+      // a stray file in the Unsorted queue. Log and continue.
+      console.error("Failed to mark imported file as reviewed:", error)
+    }
+  }
+
+  revalidatePath("/invoices")
+  revalidatePath("/unsorted")
+  return { success: true, data: { id: invoice.id } }
+}
+
 export async function updateInvoiceAction(id: string, data: Partial<CreateInvoiceData>): Promise<InvoiceActionResult<{ id: string }>> {
   const user = await getCurrentUser()
   const existing = await prisma.invoice.findFirst({
