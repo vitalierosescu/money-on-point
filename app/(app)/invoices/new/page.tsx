@@ -1,4 +1,4 @@
-import { InvoiceGenerator } from "@/components/invoices/invoice-generator"
+import { NewInvoiceClient } from "@/components/invoices/new-invoice-client"
 import { PageShell } from "@/components/ui/page-shell"
 import { getCurrentUser } from "@/lib/auth"
 import type { InvoiceTemplate } from "@/lib/invoice-pdf/templates"
@@ -34,14 +34,13 @@ export default async function NewInvoicePage() {
         <h2 className="text-2xl font-bold">New Invoice</h2>
         <span className="text-muted-foreground">{nextNumber}</span>
       </div>
-      <InvoiceGenerator
+      <NewInvoiceClient
         appData={appData as InvoiceAppData | null}
         customers={customers}
         currencies={currencies}
         nextInvoiceNumber={nextNumber}
         settings={settings}
         user={user}
-        mode="create"
       />
     </PageShell>
   )

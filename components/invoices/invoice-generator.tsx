@@ -43,7 +43,7 @@ type InvoiceAppData = {
   templates: InvoiceTemplate[]
 }
 
-function hydrateFormData(base: InvoiceFormData, candidate?: InvoiceFormData): InvoiceFormData {
+function hydrateFormData(base: InvoiceFormData, candidate?: Partial<InvoiceFormData>): InvoiceFormData {
   if (!candidate) return base
   return {
     ...base,
@@ -218,7 +218,7 @@ export function InvoiceGenerator({
   invoiceId?: string
   initialCustomer?: Customer | null
   initialDeliveryMethod?: string | null
-  initialFormData?: InvoiceFormData
+  initialFormData?: Partial<InvoiceFormData>
 }) {
   const templates: InvoiceTemplate[] = useMemo(
     () => [...defaultTemplates(user, settings), ...(appData?.templates || [])],
