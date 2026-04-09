@@ -44,6 +44,15 @@ function InlineHint({ text }: { text: string }) {
   )
 }
 
+/**
+ * Compact input sizing used across all the ItemRow / TaxRow / FeeRow
+ * cells. The default `Input` primitive is `h-10 text-base` which is
+ * intentionally large for primary fields, but inside the invoice items
+ * table it eats too much vertical + horizontal space and makes small
+ * numeric values (quantity 0.5, unit price 1250) look disproportionate.
+ */
+const COMPACT_INPUT = "h-8 text-sm"
+
 const ItemRow = memo(function ItemRow({
   item,
   index,
@@ -58,30 +67,37 @@ const ItemRow = memo(function ItemRow({
   currency: string
 }) {
   return (
-    <div className="flex flex-col items-start gap-2 bg-card px-3 py-3 sm:grid sm:grid-cols-[1fr_80px_110px_100px_36px] sm:items-center sm:gap-2">
+    // Narrower numeric columns: realistic quantities (0.5, 1, 8) never
+    // need 80px and realistic unit prices (up to ~9999) don't need 110px.
+    // The description column is the only one that should be able to grow.
+    <div className="flex flex-col items-start gap-2 bg-card px-3 py-2 sm:grid sm:grid-cols-[1fr_64px_92px_88px_28px] sm:items-center sm:gap-2">
       <div className="w-full">
         <FormInput
           type="text"
           value={item.name}
           onChange={(e) => onChange(index, "name", e.target.value)}
-          className="w-full min-w-0"
+          className={`w-full min-w-0 ${COMPACT_INPUT}`}
           placeholder="Itemnaam"
           required
         />
         {!item.showSubtitle ? (
           <button
             type="button"
-            className="mt-1 ml-1 text-caption text-muted-foreground hover:text-foreground"
+            className="mt-0.5 ml-1 text-xs text-muted-foreground hover:text-foreground"
             onClick={() => onChange(index, "showSubtitle", true)}
           >
             + Beschrijving toevoegen
           </button>
         ) : (
-          <FormInput
+          // Subtitle renders as a quieter sub-line directly under the
+          // item name: smaller, borderless, italic, muted. Keeps the
+          // Dutch invoice convention of a line item + clarifying subtext
+          // without making the subtitle feel like a second primary field.
+          <input
             type="text"
             value={item.subtitle}
             onChange={(e) => onChange(index, "subtitle", e.target.value)}
-            className="mt-1 w-full text-caption text-muted-foreground"
+            className="mt-0.5 w-full bg-transparent px-1 py-0.5 text-xs italic text-muted-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring focus:rounded-sm"
             placeholder="Beschrijving (optioneel)"
           />
         )}
@@ -92,7 +108,7 @@ const ItemRow = memo(function ItemRow({
         min="1"
         value={item.quantity}
         onChange={(e) => onChange(index, "quantity", Number(e.target.value))}
-        className="w-full text-right"
+        className={`w-full text-right tabular-nums ${COMPACT_INPUT}`}
         required
       />
       <FormInput
@@ -101,12 +117,21 @@ const ItemRow = memo(function ItemRow({
         min="0"
         value={item.unitPrice}
         onChange={(e) => onChange(index, "unitPrice", Number(e.target.value))}
-        className="w-full text-right"
+        className={`w-full text-right tabular-nums ${COMPACT_INPUT}`}
         required
       />
-      <div className="w-full text-right text-sm font-medium">{formatCurrency(item.subtotal * 100, currency)}</div>
+      <div className="w-full text-right text-sm font-medium tabular-nums">{formatCurrency(item.subtotal * 100, currency)}</div>
       <div className="w-full sm:w-auto flex justify-end">
-        <Button variant="destructive" className="h-7 w-7 rounded-full p-1" onClick={() => onRemove(index)}>
+        {/* Subtle delete: ghost, muted, hover reveals destructive tint.
+            Deletion is a rare secondary action, not a primary one. */}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+          onClick={() => onRemove(index)}
+          aria-label="Verwijder regel"
+        >
           <X className="h-3.5 w-3.5" />
         </Button>
       </div>
@@ -129,7 +154,14 @@ const TaxRow = memo(function TaxRow({
 }) {
   return (
     <div className="flex items-center gap-2">
-      <Button variant="destructive" className="h-7 w-7 rounded-full p-1" onClick={() => onRemove(index)}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7 rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+        onClick={() => onRemove(index)}
+        aria-label="Verwijder btw"
+      >
         <X className="h-3.5 w-3.5" />
       </Button>
       <FormInput
@@ -137,16 +169,17 @@ const TaxRow = memo(function TaxRow({
         value={tax.name}
         onChange={(e) => onChange(index, "name", e.target.value)}
         placeholder="Belastingnaam"
+        className={`w-28 ${COMPACT_INPUT}`}
       />
       <FormInput
         type="number"
         max="100"
         value={tax.rate}
         onChange={(e) => onChange(index, "rate", Number(e.target.value))}
-        className="w-16 text-right"
+        className={`w-14 text-right tabular-nums ${COMPACT_INPUT}`}
       />
-      <span className="text-sm text-muted-foreground">%</span>
-      <span className="ml-auto text-sm">{formatCurrency(tax.amount * 100, currency)}</span>
+      <span className="text-xs text-muted-foreground">%</span>
+      <span className="ml-auto text-sm tabular-nums">{formatCurrency(tax.amount * 100, currency)}</span>
     </div>
   )
 })
@@ -166,7 +199,14 @@ const FeeRow = memo(function FeeRow({
 }) {
   return (
     <div className="flex items-center gap-2">
-      <Button variant="destructive" className="h-7 w-7 rounded-full p-1" onClick={() => onRemove(index)}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7 rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+        onClick={() => onRemove(index)}
+        aria-label="Verwijder toeslag"
+      >
         <X className="h-3.5 w-3.5" />
       </Button>
       <FormInput
@@ -174,15 +214,16 @@ const FeeRow = memo(function FeeRow({
         value={fee.name}
         onChange={(e) => onChange(index, "name", e.target.value)}
         placeholder="Toeslag of korting"
+        className={`flex-1 ${COMPACT_INPUT}`}
       />
       <FormInput
         type="number"
         step="0.01"
         value={fee.amount}
         onChange={(e) => onChange(index, "amount", Number(e.target.value))}
-        className="w-20 text-right"
+        className={`w-20 text-right tabular-nums ${COMPACT_INPUT}`}
       />
-      <span className="ml-auto text-sm">{formatCurrency(fee.amount * 100, currency)}</span>
+      <span className="ml-auto text-sm tabular-nums">{formatCurrency(fee.amount * 100, currency)}</span>
     </div>
   )
 })
@@ -573,7 +614,7 @@ export function InvoicePage({
           <InlineHint text="Van en Aan worden standaard automatisch ingevuld. Gebruik het potlood voor een eenmalige manuele aanpassing." />
         </div>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
-          <div>
+          <div className="min-w-0">
             <div className="mb-1 flex items-center justify-between">
               <label className="text-caption text-muted-foreground">{invoiceData.companyDetailsLabel || "Van"}</label>
               <Button
@@ -599,7 +640,7 @@ export function InvoicePage({
               required
             />
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="mb-1 flex items-center justify-between">
               <label className="text-caption text-muted-foreground">{invoiceData.billToLabel || "Aan"}</label>
               <Button
@@ -632,7 +673,7 @@ export function InvoicePage({
           <InlineHint text="Voeg hier je artikels of diensten toe. Totaal wordt live herberekend." />
         </div>
         <div className="mt-3 overflow-hidden rounded-lg border">
-          <div className="hidden border-b bg-muted/30 text-caption font-medium uppercase tracking-wider text-muted-foreground sm:grid sm:grid-cols-[1fr_80px_110px_100px_36px] sm:px-3 sm:py-2">
+          <div className="hidden border-b bg-muted/30 text-caption font-medium uppercase tracking-wider text-muted-foreground sm:grid sm:grid-cols-[1fr_64px_92px_88px_28px] sm:px-3 sm:py-2 sm:gap-2">
             <div>{invoiceData.itemLabel || "Omschrijving"}</div>
             <div className="text-right">{invoiceData.quantityLabel || "Aantal"}</div>
             <div className="text-right">{invoiceData.unitPriceLabel || "Prijs"}</div>
@@ -662,8 +703,14 @@ export function InvoicePage({
       </section>
 
       <section className="rounded-xl border bg-card p-4">
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-          <div className="space-y-3">
+        {/* Summary box sits beside the inputs only at md+ AND only when
+            the parent is wide enough. Using md:grid-cols-2 with min-w-0
+            tracks so neither column can overflow. The previous
+            `lg:grid-cols-[minmax(0,1fr)_280px]` was fighting the outer
+            preview pane for space and collapsed the left column to
+            near-zero, causing the summary box to overlap the BTW row. */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="min-w-0 space-y-3">
             <div>
               <div className="mb-2 text-caption text-muted-foreground">Btw en toeslagen</div>
               {isAuthorRightsInvoice ? (
@@ -709,11 +756,11 @@ export function InvoicePage({
             </div>
           </div>
 
-          <div className="rounded-lg border p-3">
+          <div className="min-w-0 rounded-lg border p-3">
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
+              <div className="flex justify-between gap-2">
                 <span className="text-muted-foreground">{invoiceData.summarySubtotalLabel || "Subtotaal"}</span>
-                <span>{formatCurrency(subtotal * 100, invoiceData.currency)}</span>
+                <span className="tabular-nums">{formatCurrency(subtotal * 100, invoiceData.currency)}</span>
               </div>
               {isAuthorRightsInvoice && authorRightsData ? (
                 <>
@@ -751,17 +798,12 @@ export function InvoicePage({
                 </div>
               ))}
 
-              {!isAuthorRightsInvoice && (
-                <label className="mt-3 flex items-center gap-2 text-caption text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    checked={invoiceData.taxIncluded}
-                    onChange={(e) => dispatch({ type: "UPDATE_FIELD", field: "taxIncluded", value: e.target.checked })}
-                    className="h-4 w-4 rounded border-input"
-                  />
-                  Btw inbegrepen in lijnprijs
-                </label>
-              )}
+              {/* The "Btw inbegrepen in lijnprijs" checkbox was removed
+                  on 2026-04-09 at user request — Vitalie will never use
+                  tax-inclusive line pricing. The field stays on
+                  InvoiceFormData for backward compat with historical
+                  invoices that saved with taxIncluded=true, but we no
+                  longer offer it as a new choice. */}
 
               <div className="flex justify-between border-t pt-2 text-base font-semibold">
                 <span>{isAuthorRightsInvoice ? "Netto te betalen" : invoiceData.summaryTotalLabel || "Totaal"}</span>

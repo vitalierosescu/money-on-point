@@ -200,21 +200,25 @@ export function CustomerPicker({ customers, selectedCustomer, onSelect }: Custom
 
   if (selectedCustomer) {
     return (
-      <div className="flex items-center justify-between p-3 border rounded-lg">
-        <div className="flex items-center gap-3">
+      // Compact selected-customer chip: small avatar, tight text,
+      // buttons grouped at the end. Avoids the previous layout where
+      // "Robbe Verhoest" was wrapping to 2 lines next to an oversized
+      // avatar and the Edit/Change buttons were crammed against it.
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-2">
+        <div className="flex min-w-0 items-center gap-2">
           <CustomerAvatar
             name={selectedCustomer.name}
             website={selectedCustomer.website}
-            size="md"
+            size="sm"
           />
-          <div>
-            <p className="font-medium">{selectedCustomer.name}</p>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium">{selectedCustomer.name}</p>
             {selectedCustomer.email && (
-              <p className="text-sm text-muted-foreground">{selectedCustomer.email}</p>
+              <p className="truncate text-xs text-muted-foreground">{selectedCustomer.email}</p>
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <CustomerEditPanel
             customer={selectedCustomer}
             onSuccess={(updated) => {
@@ -224,12 +228,17 @@ export function CustomerPicker({ customers, selectedCustomer, onSelect }: Custom
               onSelect(updated)
             }}
             trigger={
-              <Button variant="outline" size="sm">
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs">
                 Edit
               </Button>
             }
           />
-          <Button variant="outline" size="sm" onClick={() => onSelect(null)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            onClick={() => onSelect(null)}
+          >
             Change
           </Button>
         </div>
@@ -238,55 +247,61 @@ export function CustomerPicker({ customers, selectedCustomer, onSelect }: Custom
   }
 
   return (
-    <div className="space-y-3">
-      {/* Tab navigation */}
+    <div className="space-y-2">
+      {/* Tab navigation — compact so both tabs fit side-by-side inside
+          a narrow Klant card without truncating to "Existing Custom..."
+          and "Cu..." */}
       <div className="flex border-b">
         <button
           type="button"
           onClick={() => setActiveTab("existing")}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+          className={`px-2 py-1.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
             activeTab === "existing"
               ? "border-foreground text-foreground"
               : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
         >
-          Existing Customer
+          Existing
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("new")}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+          className={`px-2 py-1.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
             activeTab === "new"
               ? "border-foreground text-foreground"
               : "border-transparent text-muted-foreground hover:text-foreground"
           }`}
         >
-          New Customer
+          New
         </button>
       </div>
 
-      {/* Existing customer tab */}
+      {/* Existing customer tab — compact rows: smaller avatar, tighter
+          padding, smaller text. The container keeps min-w-0 + truncate
+          everywhere so long customer names shrink gracefully instead of
+          forcing horizontal overflow or multi-line wraps. */}
       {activeTab === "existing" && (
         <div className="space-y-2">
           <Input
             placeholder="Search customers..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            className="h-8 text-sm"
           />
           <div className="border rounded-lg max-h-48 overflow-y-auto">
             {filtered.length === 0 ? (
-              <p className="p-3 text-sm text-muted-foreground">No customers found.</p>
+              <p className="p-2 text-xs text-muted-foreground">No customers found.</p>
             ) : (
               filtered.map((customer) => (
                 <button
                   key={customer.id}
                   type="button"
-                  className="w-full text-left p-3 hover:bg-muted border-b last:border-0 flex items-center gap-3"
+                  className="w-full text-left px-2 py-1.5 hover:bg-muted border-b last:border-0 flex items-center gap-2 min-w-0"
                   onClick={() => onSelect(customer)}
                 >
-                  <CustomerAvatar name={customer.name} website={customer.website} size="md" />
-                  <div className="min-w-0">
-                    <p className="font-medium truncate">{customer.name}</p>
+                  <CustomerAvatar name={customer.name} website={customer.website} size="sm" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{customer.name}</p>
                     {customer.email && (
                       <p className="text-xs text-muted-foreground truncate">{customer.email}</p>
                     )}

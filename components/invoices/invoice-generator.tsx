@@ -29,6 +29,7 @@ import {
   addNewTemplateAction,
   createInvoiceAction,
   deleteTemplateAction,
+  saveImportedInvoiceAction,
   sendInvoiceEmailAction,
   sendInvoicePeppolAction,
   updateInvoiceAction,
@@ -207,6 +208,10 @@ export function InvoiceGenerator({
   initialCustomer,
   initialDeliveryMethod,
   initialFormData: initialFormDataProp,
+  importMode = false,
+  uploadedFileId = null,
+  uploadedFilePath = null,
+  uploadedPreviewImages = [],
 }: {
   user: User
   settings: SettingsMap
@@ -219,6 +224,15 @@ export function InvoiceGenerator({
   initialCustomer?: Customer | null
   initialDeliveryMethod?: string | null
   initialFormData?: Partial<InvoiceFormData>
+  /** When true, the form is displaying data extracted from an uploaded
+   *  PDF. The save UI switches to "Save as draft" / "Save as sent"
+   *  (both bypass Peppol readiness validation), the "Ready to send"
+   *  banner and Send button are hidden, and the live preview pane shows
+   *  the uploaded PDF pages instead of the reconstructed HTML preview. */
+  importMode?: boolean
+  uploadedFileId?: string | null
+  uploadedFilePath?: string | null
+  uploadedPreviewImages?: string[]
 }) {
   const templates: InvoiceTemplate[] = useMemo(
     () => [...defaultTemplates(user, settings), ...(appData?.templates || [])],
@@ -528,8 +542,17 @@ export function InvoiceGenerator({
         templateData: formData,
       }
 
-      const result =
-        mode === "edit" && invoiceId
+      // In import mode we route through a dedicated action that bypasses
+      // Peppol readiness validation (imported invoices were sent via
+      // another system originally) and attaches the uploaded PDF as the
+      // invoice's permanent pdfPath. Draft and sent both go through the
+      // same action — it branches on status for transaction creation.
+      const result = importMode
+        ? await saveImportedInvoiceAction(payload, {
+            uploadedFileId,
+            uploadedFilePath,
+          })
+        : mode === "edit" && invoiceId
           ? await updateInvoiceAction(invoiceId, payload)
           : await createInvoiceAction(payload)
 
@@ -556,6 +579,13 @@ export function InvoiceGenerator({
 
   const handleSaveDraft = async () => {
     const persistedInvoiceId = await persistInvoice("draft")
+    if (persistedInvoiceId) {
+      window.location.href = `/invoices/${persistedInvoiceId}`
+    }
+  }
+
+  const handleSaveAsSent = async () => {
+    const persistedInvoiceId = await persistInvoice("sent")
     if (persistedInvoiceId) {
       window.location.href = `/invoices/${persistedInvoiceId}`
     }
@@ -608,11 +638,21 @@ export function InvoiceGenerator({
   return (
     <TooltipProvider delayDuration={100}>
       <div className="flex flex-col gap-6">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_480px] lg:items-start">
-          <div className="flex min-w-0 flex-col gap-6 lg:max-h-[calc(100vh-180px)] lg:overflow-y-auto lg:pr-2">
+        {/* Preview splits off to the side only at xl (1280px+). Below
+            that it stacks below the form so the form column gets the
+            full content width \u2014 enough for the nested Klant/Verzendmethode,
+            Van/Aan, and Btw/summary sub-grids to breathe without
+            crashing into each other. */}
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_440px] xl:items-start">
+          <div className="flex min-w-0 flex-col gap-6 xl:max-h-[calc(100vh-180px)] xl:overflow-y-auto xl:pr-2">
             {(mode === "create" || mode === "edit") && customers && (
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-                <section className="rounded-xl border bg-card p-5">
+              // Klant + Verzendmethode share the row equally. The old
+              // layout fixed Verzendmethode at 280px which stole space
+              // from the customer picker, truncating tabs ("Existing
+              // Custom...") and customer names ("R...", "I...") on
+              // typical laptop widths.
+              <div className="grid gap-4 lg:grid-cols-2">
+                <section className="rounded-xl border bg-card p-5 min-w-0">
                   <div className="flex items-center gap-2">
                     <h2 className="text-sm font-semibold">Klant</h2>
                     <InlineHint text="Kies een bestaande klant of maak meteen een nieuwe. De ontvangergegevens worden automatisch ingevuld." />
@@ -626,20 +666,44 @@ export function InvoiceGenerator({
                   </div>
                 </section>
 
-                <section className="rounded-xl border bg-card p-5">
+                <section className="rounded-xl border bg-card p-5 min-w-0">
                   <div className="flex items-center gap-2">
                     <h2 className="text-sm font-semibold">Verzendmethode</h2>
                     <InlineHint text="Kies de aflevermethode. De hoofdactie gebruikt deze keuze meteen voor verzending." />
                   </div>
-                  <select
-                    value={deliveryMethod}
-                    onChange={(e) => setDeliveryMethod(normalizeInvoiceDeliveryMethod(e.target.value) ?? "email_pdf")}
-                    className="mt-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    disabled={isAuthorRightsInvoice}
-                  >
-                    <option value="email_pdf">{getInvoiceDeliveryMethodLabel("email_pdf")}</option>
-                    {!isAuthorRightsInvoice && <option value="peppol">{getInvoiceDeliveryMethodLabel("peppol")}</option>}
-                  </select>
+                  {/* Side-by-side selectable options instead of a dropdown.
+                      Flex-wrap so they stack on narrow cards. Author-rights
+                      mode hides the Peppol option because that flow is
+                      email-only. */}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {!isAuthorRightsInvoice && (
+                      <button
+                        type="button"
+                        onClick={() => setDeliveryMethod("peppol")}
+                        className={`flex-1 min-w-[120px] rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                          deliveryMethod === "peppol"
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border bg-background hover:border-primary hover:bg-secondary/40"
+                        }`}
+                        aria-pressed={deliveryMethod === "peppol"}
+                      >
+                        {getInvoiceDeliveryMethodLabel("peppol")}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryMethod("email_pdf")}
+                      disabled={isAuthorRightsInvoice}
+                      className={`flex-1 min-w-[120px] rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                        deliveryMethod === "email_pdf"
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-background hover:border-primary hover:bg-secondary/40"
+                      } disabled:pointer-events-none disabled:opacity-50`}
+                      aria-pressed={deliveryMethod === "email_pdf"}
+                    >
+                      {getInvoiceDeliveryMethodLabel("email_pdf")}
+                    </button>
+                  </div>
                   <div className="mt-2 text-xs text-muted-foreground">
                     {isAuthorRightsInvoice
                       ? "Auteursrechtenmodus gebruikt enkel e-mail met PDF."
@@ -648,8 +712,8 @@ export function InvoiceGenerator({
                         : "E-mail met PDF-bijlage"}
                   </div>
                   {isPeppol && (
-                    <div className={`mt-3 inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${peppolEnvironmentTone}`}>
-                      PEPPOL environment: {activePeppolEnvironmentLabel}
+                    <div className={`mt-3 inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${peppolEnvironmentTone}`}>
+                      {activePeppolEnvironmentLabel}
                     </div>
                   )}
                 </section>
@@ -720,17 +784,28 @@ export function InvoiceGenerator({
             />
 
             <section className="rounded-xl border bg-card p-5">
-              {readinessBlockers.length > 0 ? (
-                <div className="mb-4 rounded-lg border border-warning/30 bg-warning/10 p-3">
-                  <ul className="space-y-1 text-sm text-warning">
-                    {readinessBlockers.map((blocker) => (
-                      <li key={blocker}>&bull; {blocker}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : (
-                <div className="mb-4 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
-                  Klaar om te verzenden.
+              {/* In import mode we skip the Peppol readiness banner: the
+                  invoice has already been sent via another system, so the
+                  readiness rules are irrelevant. */}
+              {!importMode &&
+                (readinessBlockers.length > 0 ? (
+                  <div className="mb-4 rounded-lg border border-warning/30 bg-warning/10 p-3">
+                    <ul className="space-y-1 text-sm text-warning">
+                      {readinessBlockers.map((blocker) => (
+                        <li key={blocker}>&bull; {blocker}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <div className="mb-4 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
+                    Klaar om te verzenden.
+                  </div>
+                ))}
+
+              {importMode && (
+                <div className="mb-4 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm text-foreground">
+                  Imported from PDF. Save as draft to keep editing, or save
+                  as sent to record it as already delivered externally.
                 </div>
               )}
 
@@ -740,54 +815,111 @@ export function InvoiceGenerator({
                 </div>
               )}
 
-              <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
-                <Button variant="outline" className="sm:flex-1" onClick={handleSaveDraft} disabled={isSavingInvoice}>
-                  {isSavingInvoice ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Save className="mr-2 h-4 w-4" />
-                  )}
-                  Opslaan als concept
-                </Button>
-                <Button
-                  className="sm:flex-1"
-                  onClick={handleSendInvoice}
-                  disabled={isSavingInvoice || readinessBlockers.length > 0}
-                >
-                  {isSavingInvoice ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : isPeppol ? (
-                    <Send className="mr-2 h-4 w-4" />
-                  ) : (
-                    <Mail className="mr-2 h-4 w-4" />
-                  )}
-                  {primaryActionLabel}
-                </Button>
-              </div>
-              {isPeppol && (
+              {importMode ? (
+                <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
+                  <Button
+                    variant="outline"
+                    className="sm:flex-1"
+                    onClick={handleSaveDraft}
+                    disabled={isSavingInvoice}
+                  >
+                    {isSavingInvoice ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="mr-2 h-4 w-4" />
+                    )}
+                    Save as draft
+                  </Button>
+                  <Button
+                    className="sm:flex-1"
+                    onClick={handleSaveAsSent}
+                    disabled={isSavingInvoice}
+                  >
+                    {isSavingInvoice ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="mr-2 h-4 w-4" />
+                    )}
+                    Save as sent
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
+                  <Button variant="outline" className="sm:flex-1" onClick={handleSaveDraft} disabled={isSavingInvoice}>
+                    {isSavingInvoice ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="mr-2 h-4 w-4" />
+                    )}
+                    Opslaan als concept
+                  </Button>
+                  <Button
+                    className="sm:flex-1"
+                    onClick={handleSendInvoice}
+                    disabled={isSavingInvoice || readinessBlockers.length > 0}
+                  >
+                    {isSavingInvoice ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : isPeppol ? (
+                      <Send className="mr-2 h-4 w-4" />
+                    ) : (
+                      <Mail className="mr-2 h-4 w-4" />
+                    )}
+                    {primaryActionLabel}
+                  </Button>
+                </div>
+              )}
+
+              {isPeppol && !importMode && (
                 <p className="mt-2 text-center text-xs text-muted-foreground">
                   Active PEPPOL environment: <span className="font-medium">{activePeppolEnvironmentLabel}</span>
                 </p>
               )}
-              <p className="mt-2 text-center text-xs text-muted-foreground">
-                &#8984;S concept opslaan &middot; &#8984;&#9166; verzenden
-              </p>
+              {!importMode && (
+                <p className="mt-2 text-center text-xs text-muted-foreground">
+                  &#8984;S concept opslaan &middot; &#8984;&#9166; verzenden
+                </p>
+              )}
             </section>
           </div>
 
-          <aside className="hidden lg:sticky lg:top-5 lg:block">
+          <aside className="hidden xl:sticky xl:top-5 xl:block">
             <div className="space-y-3">
               <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-2">
-                  <h2 className="text-sm font-semibold">Live preview</h2>
-                  <InlineHint text="Voorbeeld van de factuur zoals ze eruitziet bij verzending en PDF-export." />
+                  <h2 className="text-sm font-semibold">
+                    {importMode && uploadedPreviewImages.length > 0 ? "Imported PDF" : "Live preview"}
+                  </h2>
+                  <InlineHint
+                    text={
+                      importMode && uploadedPreviewImages.length > 0
+                        ? "Exacte weergave van het geüploade PDF-bestand."
+                        : "Voorbeeld van de factuur zoals ze eruitziet bij verzending en PDF-export."
+                    }
+                  />
                 </div>
-                <span className="text-xs text-muted-foreground">Wordt live bijgewerkt</span>
+                {!importMode && (
+                  <span className="text-xs text-muted-foreground">Wordt live bijgewerkt</span>
+                )}
               </div>
-              <InvoicePreview
-                templateData={formData}
-                className="max-h-[calc(100vh-180px)] overflow-y-auto rounded-xl border shadow-sm"
-              />
+              {importMode && uploadedPreviewImages.length > 0 ? (
+                <div className="max-h-[calc(100vh-180px)] space-y-2 overflow-y-auto rounded-xl border bg-card p-2 shadow-sm">
+                  {uploadedPreviewImages.map((src, idx) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      key={idx}
+                      src={src}
+                      alt={`Imported PDF page ${idx + 1}`}
+                      className="w-full rounded-md border"
+                    />
+                  ))}
+                </div>
+              ) : (
+                <InvoicePreview
+                  templateData={formData}
+                  className="max-h-[calc(100vh-180px)] overflow-y-auto rounded-xl border shadow-sm"
+                />
+              )}
             </div>
           </aside>
         </div>
