@@ -9,6 +9,7 @@ Statuses:
 
 - `live` Dashboard with hero, work queue, upload entry points, stats, and reports shortcuts
 - `live` Invoices list, filters, drawer, create/edit flow, PDF generation, Resend email sending, PEPPOL sending, payment actions
+- `live` Bulk CSV import of historical sent invoices at `/invoices/import` — fixed column schema, auto-creates missing customers, opt-in linked income transactions, duplicate skip/abort handling
 - `live` Expenses list, status tabs, bulk actions, drawer, edit flow, file attachment handling
 - `live` Customers list and customer detail pages
 - `live` Files page and file library flows

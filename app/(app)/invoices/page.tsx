@@ -11,7 +11,7 @@ import {
   getRecommandEnvironmentLabel,
   hasConfiguredRecommandCredentials,
 } from "@/lib/recommand-settings"
-import { Plus } from "lucide-react"
+import { Plus, Upload } from "lucide-react"
 import { Metadata } from "next"
 import Link from "next/link"
 
@@ -40,11 +40,18 @@ export default async function InvoicesPage({
         count={invoices.length}
         className="mb-space-6"
         actions={
-          <Link href="/invoices/new">
-            <Button>
-              <Plus /> {t(locale, "invoices.newInvoice")}
-            </Button>
-          </Link>
+          <div className="flex gap-2">
+            <Link href="/invoices/import">
+              <Button variant="outline">
+                <Upload /> Import
+              </Button>
+            </Link>
+            <Link href="/invoices/new">
+              <Button>
+                <Plus /> {t(locale, "invoices.newInvoice")}
+              </Button>
+            </Link>
+          </div>
         }
       />
 
