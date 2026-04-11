@@ -61,7 +61,7 @@ export const getFileById = cache(async (id: string, userId: string) => {
 })
 
 export const getFilesLibrary = cache(async (userId: string): Promise<FileLibraryItem[]> => {
-  const [files, transactions] = await Promise.all([
+  const [files, transactions, invoices] = await Promise.all([
     prisma.file.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
@@ -78,9 +78,26 @@ export const getFilesLibrary = cache(async (userId: string): Promise<FileLibrary
       },
       orderBy: { createdAt: "desc" },
     }),
+    prisma.invoice.findMany({
+      where: { userId, pdfPath: { not: null } },
+      include: {
+        customer: true,
+      },
+      orderBy: { issuedAt: "desc" },
+    }),
   ])
 
   const relatedRecordsByFileId = new Map<string, FileRelatedRecord[]>()
+  const fileIdByPath = new Map(files.map((file) => [path.normalize(file.path), file.id]))
+
+  function appendRelatedRecord(fileId: string, record: FileRelatedRecord) {
+    const current = relatedRecordsByFileId.get(fileId) ?? []
+    if (current.some((entry) => entry.kind === record.kind && entry.id === record.id)) {
+      return
+    }
+    current.push(record)
+    relatedRecordsByFileId.set(fileId, current)
+  }
 
   for (const transaction of transactions) {
     const fileIds = Array.isArray(transaction.files) ? (transaction.files as string[]) : []
@@ -105,21 +122,46 @@ export const getFilesLibrary = cache(async (userId: string): Promise<FileLibrary
               subtitle: transaction.categoryCode ?? null,
               status: transaction.status,
             }
-          : {
-              kind: "income",
-              id: transaction.id,
+        : {
+            kind: "income",
+            id: transaction.id,
               href: "/invoices",
               title: transaction.name ?? "Income transaction",
               subtitle: transaction.customer?.name ?? null,
-              status: transaction.status,
-            }
+            status: transaction.status,
+          }
 
     for (const fileId of fileIds) {
-      const current = relatedRecordsByFileId.get(fileId) ?? []
-      current.push(relatedRecord)
-      relatedRecordsByFileId.set(fileId, current)
+      appendRelatedRecord(fileId, relatedRecord)
     }
   }
+
+  for (const invoice of invoices) {
+    if (!invoice.pdfPath) continue
+
+    const fileId = fileIdByPath.get(path.normalize(invoice.pdfPath))
+    if (!fileId) continue
+
+    appendRelatedRecord(fileId, {
+      kind: "invoice",
+      id: invoice.id,
+      href: `/invoices/${invoice.id}`,
+      title: invoice.invoiceNumber,
+      subtitle: invoice.customer?.name ?? invoice.customerName ?? null,
+      status: invoice.status,
+    })
+  }
+
+  for (const file of files) {
+    const related = relatedRecordsByFileId.get(file.id)
+    if (!related) continue
+    related.sort((a, b) => {
+      if (a.kind === "invoice" && b.kind !== "invoice") return -1
+      if (a.kind !== "invoice" && b.kind === "invoice") return 1
+      return a.title.localeCompare(b.title)
+    })
+    relatedRecordsByFileId.set(file.id, related)
+    }
 
   return files.map((file) => ({
     ...file,

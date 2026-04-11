@@ -29,10 +29,21 @@ type DirectoryState =
   | { kind: "error"; message: string }
   | { kind: "disabled" }
 
+type NewCustomerSeed = {
+  name?: string
+  country?: string
+  vatNumber?: string
+  street?: string
+  zipCode?: string
+  city?: string
+  email?: string
+}
+
 type CustomerPickerProps = {
   customers: Customer[]
   selectedCustomer: Customer | null
   onSelect: (customer: Customer | null) => void
+  initialNewCustomer?: NewCustomerSeed
 }
 
 const VAT_LIKE_REGEX = /^[A-Z]{0,2}\s*\d[\d\s.\-]{7,}$/i
@@ -41,21 +52,21 @@ function looksLikeVat(input: string): boolean {
   return VAT_LIKE_REGEX.test(input.trim())
 }
 
-export function CustomerPicker({ customers, selectedCustomer, onSelect }: CustomerPickerProps) {
-  const [activeTab, setActiveTab] = useState<"existing" | "new">("existing")
+export function CustomerPicker({ customers, selectedCustomer, onSelect, initialNewCustomer }: CustomerPickerProps) {
+  const [activeTab, setActiveTab] = useState<"existing" | "new">(initialNewCustomer ? "new" : "existing")
   const [search, setSearch] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [localCustomers, setLocalCustomers] = useState(customers)
 
   const [newCustomer, setNewCustomer] = useState({
-    name: "",
-    country: "Belgium",
-    vatNumber: "",
-    street: "",
+    name: initialNewCustomer?.name ?? "",
+    country: initialNewCustomer?.country || "Belgium",
+    vatNumber: initialNewCustomer?.vatNumber ?? "",
+    street: initialNewCustomer?.street ?? "",
     houseNumber: "",
-    zipCode: "",
-    city: "",
-    email: "",
+    zipCode: initialNewCustomer?.zipCode ?? "",
+    city: initialNewCustomer?.city ?? "",
+    email: initialNewCustomer?.email ?? "",
     peppolVerified: false as boolean | null,
     recommandDirectorySource: null as null | "directory" | "manual",
   })

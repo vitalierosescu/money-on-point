@@ -12,8 +12,8 @@ import { format } from "date-fns"
 import { CalendarIcon, Upload } from "lucide-react"
 import { InputHTMLAttributes, TextareaHTMLAttributes, useEffect, useRef, useState } from "react"
 
-type FormInputProps = InputHTMLAttributes<HTMLInputElement> & {
-  title?: string
+type FormInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "title"> & {
+  title?: React.ReactNode
   hideIfEmpty?: boolean
   isRequired?: boolean
 }
@@ -41,8 +41,8 @@ export function FormInput({ title, hideIfEmpty = false, isRequired = false, ...p
   )
 }
 
-type FormTextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {
-  title?: string
+type FormTextareaProps = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "title"> & {
+  title?: React.ReactNode
   hideIfEmpty?: boolean
   isRequired?: boolean
 }
@@ -101,7 +101,7 @@ export const FormSelect = ({
   defaultValue,
 }: {
   items: Array<{ code: string; name: string; color?: string; badge?: string; logo?: string }>
-  title?: string
+  title?: React.ReactNode
   emptyValue?: string
   placeholder?: string
   hideIfEmpty?: boolean
@@ -164,7 +164,7 @@ export const FormDate = ({
   ...props
 }: {
   name: string
-  title?: string
+  title?: React.ReactNode
   placeholder?: string
   defaultValue?: Date
 }) => {
@@ -227,7 +227,7 @@ export const FormAvatar = ({
   onChange,
   ...props
 }: {
-  title?: string
+  title?: React.ReactNode
   defaultValue?: string
   className?: string
   onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void

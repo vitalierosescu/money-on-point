@@ -8,18 +8,29 @@ import {
   updateExpenseAction,
   updateExpenseFieldVisibilityAction,
 } from "@/app/(app)/expenses/actions"
+import { updateTableColumnOrderAction, updateTableColumnWidthsAction } from "@/app/(app)/settings/actions"
+import { ColumnOrderList } from "@/components/ui/column-order-list"
 import { FormSelect } from "@/components/forms/simple"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/native-select"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { ResizableTableHead } from "@/components/ui/resizable-table-head"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
 import { getExpenseAmountForCurrency, getExpenseStatusMeta, normalizeExpenseStatus, type ExpenseStatus } from "@/lib/expense-status"
 import { getTransactionFieldValue } from "@/lib/fields"
 import { t } from "@/lib/i18n"
 import { formatLocaleCurrency, formatLocaleDate, formatLocaleNumber, type UiLocale } from "@/lib/locale"
+import {
+  clampColumnWidth,
+  normalizeColumnOrder,
+  normalizeColumnWidths,
+  reconcileColumnOrder,
+  reconcileColumnWidths,
+  reorderVisibleColumns,
+} from "@/lib/table-column-order"
 import { cn } from "@/lib/utils"
 import type { ExpenseWithRelations } from "@/models/transactions"
 import type { Category, Field, Project } from "@/prisma/client"
@@ -34,6 +45,8 @@ type ExpenseListProps = {
   fields: Field[]
   projects: Project[]
   defaultCurrency: string
+  initialColumnOrder?: string
+  initialColumnWidths?: string
   locale: UiLocale
 }
 
@@ -126,25 +139,25 @@ function formatFieldValue(expense: ExpenseWithRelations, field: Field, defaultCu
   }
 }
 
-function getColumnWidthClass(fieldCode: string) {
+function getDefaultColumnWidth(fieldCode: string) {
   switch (fieldCode) {
     case "name":
     case "merchant":
     case "description":
     case "note":
-      return "min-w-[220px]"
+      return 260
     case "issuedAt":
     case "dueDate":
-      return "min-w-[140px]"
+      return 160
     case "categoryCode":
     case "projectCode":
-      return "min-w-[180px]"
+      return 200
     case "total":
     case "convertedTotal":
     case "taxAmount":
-      return "min-w-[160px]"
+      return 160
     default:
-      return "min-w-[160px]"
+      return 160
   }
 }
 
@@ -388,7 +401,16 @@ function AddFieldPopover({
   )
 }
 
-export function ExpenseList({ expenses, categories, fields, projects, defaultCurrency, locale }: ExpenseListProps) {
+export function ExpenseList({
+  expenses,
+  categories,
+  fields,
+  projects,
+  defaultCurrency,
+  initialColumnOrder,
+  initialColumnWidths,
+  locale,
+}: ExpenseListProps) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<TabStatus>("all")
   const [activeCategory, setActiveCategory] = useState<string>("all")
@@ -399,10 +421,35 @@ export function ExpenseList({ expenses, categories, fields, projects, defaultCur
   const [pendingCellKey, setPendingCellKey] = useState<string | null>(null)
   const [pendingVisibilityCode, setPendingVisibilityCode] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+  const defaultColumnOrder = useMemo(() => [...fields.map((field) => field.code), "status"], [fields])
+  const [columnOrder, setColumnOrder] = useState<string[]>(() =>
+    normalizeColumnOrder(defaultColumnOrder, initialColumnOrder)
+  )
+  const defaultColumnWidths = useMemo(
+    () =>
+      Object.fromEntries(
+        defaultColumnOrder.map((columnId) => [
+          columnId,
+          columnId === "status" ? 140 : getDefaultColumnWidth(columnId),
+        ])
+      ),
+    [defaultColumnOrder]
+  )
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() =>
+    normalizeColumnWidths(defaultColumnWidths, initialColumnWidths)
+  )
 
   useEffect(() => {
     setFieldVisibility(buildVisibilityMap(fields))
   }, [fields])
+
+  useEffect(() => {
+    setColumnOrder((prev) => reconcileColumnOrder(defaultColumnOrder, prev))
+  }, [defaultColumnOrder])
+
+  useEffect(() => {
+    setColumnWidths((prev) => reconcileColumnWidths(defaultColumnWidths, prev))
+  }, [defaultColumnWidths])
 
   useEffect(() => {
     setCellOverrides({})
@@ -413,6 +460,19 @@ export function ExpenseList({ expenses, categories, fields, projects, defaultCur
   const visibleFields = useMemo(
     () => fields.filter((field) => fieldVisibility[field.code]),
     [fieldVisibility, fields]
+  )
+  const fieldByCode = useMemo(() => new Map(fields.map((field) => [field.code, field])), [fields])
+  const visibleColumnIds = useMemo(
+    () => columnOrder.filter((columnId) => columnId === "status" || fieldVisibility[columnId]),
+    [columnOrder, fieldVisibility]
+  )
+  const visibleColumnOrderItems = useMemo(
+    () =>
+      visibleColumnIds.map((columnId) => ({
+        id: columnId,
+        label: columnId === "status" ? t(locale, "expenses.tableStatus") : fieldByCode.get(columnId)?.name ?? columnId,
+      })),
+    [fieldByCode, locale, visibleColumnIds]
   )
 
   const filteredFieldChoices = useMemo(() => {
@@ -560,6 +620,42 @@ export function ExpenseList({ expenses, categories, fields, projects, defaultCur
     })
   }
 
+  function persistColumnOrder(nextOrder: string[]) {
+    setColumnOrder(nextOrder)
+
+    startTransition(async () => {
+      const result = await updateTableColumnOrderAction("expenses_list_column_order", nextOrder)
+      if (!result.success) {
+        toast.error(result.error)
+      }
+    })
+  }
+
+  function handleVisibleColumnOrderChange(nextVisibleOrder: string[]) {
+    const nextOrder = reorderVisibleColumns(columnOrder, visibleColumnIds, nextVisibleOrder)
+    persistColumnOrder(nextOrder)
+  }
+
+  function persistColumnWidths(nextWidths: Record<string, number>) {
+    setColumnWidths(nextWidths)
+
+    startTransition(async () => {
+      const result = await updateTableColumnWidthsAction("expenses_list_column_widths", nextWidths)
+      if (!result.success) {
+        toast.error(result.error)
+      }
+    })
+  }
+
+  function handleColumnWidthChange(columnId: string, width: number) {
+    setColumnWidths((prev) => ({ ...prev, [columnId]: clampColumnWidth(width) }))
+  }
+
+  function handleColumnWidthCommit(columnId: string, width: number) {
+    const nextWidths = { ...columnWidths, [columnId]: clampColumnWidth(width) }
+    persistColumnWidths(nextWidths)
+  }
+
   function handleLookupUpdate(expense: ExpenseWithRelations, fieldCode: "categoryCode" | "projectCode", value: string) {
     const key = `${expense.id}:${fieldCode}`
     const previousValue = String((getTransactionFieldValue(expense, { code: fieldCode, isExtra: false }) as string | null) ?? "")
@@ -632,6 +728,14 @@ export function ExpenseList({ expenses, categories, fields, projects, defaultCur
                   />
                 </label>
               ))}
+            </div>
+            <div className="space-y-2 border-t pt-3">
+              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Column order</div>
+              <ColumnOrderList
+                items={visibleColumnOrderItems}
+                onChange={handleVisibleColumnOrderChange}
+                emptyState="No visible columns to reorder."
+              />
             </div>
           </PopoverContent>
         </Popover>
@@ -720,6 +824,20 @@ export function ExpenseList({ expenses, categories, fields, projects, defaultCur
 
       {filtered.length > 0 && (
         <Table className="min-w-max">
+          <colgroup>
+            <col style={{ width: 48, minWidth: 48, maxWidth: 48 }} />
+            {visibleColumnIds.map((columnId) => (
+              <col
+                key={columnId}
+                style={{
+                  width: columnWidths[columnId],
+                  minWidth: columnWidths[columnId],
+                  maxWidth: columnWidths[columnId],
+                }}
+              />
+            ))}
+            <col style={{ width: 64, minWidth: 64, maxWidth: 64 }} />
+          </colgroup>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className="w-12 px-4">
@@ -729,17 +847,38 @@ export function ExpenseList({ expenses, categories, fields, projects, defaultCur
                   aria-label={t(locale, "expenses.bulkSelected", { count: formatLocaleNumber(filtered.length, locale) })}
                 />
               </TableHead>
-              {visibleFields.map((field) => (
-                <TableHead
-                  key={field.code}
-                  className={cn("border-r px-3 py-3 text-sm font-semibold text-foreground", getColumnWidthClass(field.code))}
-                >
-                  {field.name}
-                </TableHead>
-              ))}
-              <TableHead className="min-w-[140px] border-r px-3 py-3 text-sm font-semibold text-foreground">
-                {t(locale, "expenses.tableStatus")}
-              </TableHead>
+              {visibleColumnIds.map((columnId) => {
+                if (columnId === "status") {
+                  return (
+                    <ResizableTableHead
+                      key={columnId}
+                      width={columnWidths[columnId]}
+                      minWidth={120}
+                      onWidthChange={(width) => handleColumnWidthChange(columnId, width)}
+                      onWidthCommit={(width) => handleColumnWidthCommit(columnId, width)}
+                      className="group/header border-r px-3 py-3 text-sm font-semibold text-foreground"
+                    >
+                      {t(locale, "expenses.tableStatus")}
+                    </ResizableTableHead>
+                  )
+                }
+
+                const field = fieldByCode.get(columnId)
+                if (!field) return null
+
+                return (
+                  <ResizableTableHead
+                    key={field.code}
+                    width={columnWidths[field.code]}
+                    minWidth={getDefaultColumnWidth(field.code)}
+                    onWidthChange={(width) => handleColumnWidthChange(field.code, width)}
+                    onWidthCommit={(width) => handleColumnWidthCommit(field.code, width)}
+                    className="group/header border-r px-3 py-3 text-sm font-semibold text-foreground"
+                  >
+                    {field.name}
+                  </ResizableTableHead>
+                )
+              })}
               <TableHead className="w-16 px-3 py-3 text-right text-foreground">
                 <AddFieldPopover locale={locale} isPending={isPending} onCreate={handleCreateField} />
               </TableHead>
@@ -765,13 +904,26 @@ export function ExpenseList({ expenses, categories, fields, projects, defaultCur
                     />
                   </TableCell>
 
-                  {visibleFields.map((field) => {
+                  {visibleColumnIds.map((columnId) => {
+                    if (columnId === "status") {
+                      return (
+                        <TableCell key={columnId} className="border-r px-3 py-3">
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusMeta.className}`}>
+                            {statusMeta.label}
+                          </span>
+                        </TableCell>
+                      )
+                    }
+
+                    const field = fieldByCode.get(columnId)
+                    if (!field) return null
+
                     if (field.code === "categoryCode") {
                       const key = `${expense.id}:${field.code}`
                       const value = cellOverrides[key] ?? String(expense.categoryCode ?? "")
 
                       return (
-                        <TableCell key={field.code} className={cn("border-r p-0", getColumnWidthClass(field.code))}>
+                        <TableCell key={field.code} className="border-r p-0">
                           <LookupCellEditor
                             value={value}
                             items={categories.map((category) => ({
@@ -793,7 +945,7 @@ export function ExpenseList({ expenses, categories, fields, projects, defaultCur
                       const value = cellOverrides[key] ?? String(expense.projectCode ?? "")
 
                       return (
-                        <TableCell key={field.code} className={cn("border-r p-0", getColumnWidthClass(field.code))}>
+                        <TableCell key={field.code} className="border-r p-0">
                           <LookupCellEditor
                             value={value}
                             items={projects.map((project) => ({
@@ -811,17 +963,11 @@ export function ExpenseList({ expenses, categories, fields, projects, defaultCur
                     }
 
                     return (
-                      <TableCell key={field.code} className={cn("border-r px-3 py-3", getColumnWidthClass(field.code))}>
+                      <TableCell key={field.code} className="border-r px-3 py-3">
                         {formatFieldValue(expense, field, defaultCurrency, locale)}
                       </TableCell>
                     )
                   })}
-
-                  <TableCell className="border-r px-3 py-3">
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${statusMeta.className}`}>
-                      {statusMeta.label}
-                    </span>
-                  </TableCell>
 
                   <TableCell className="px-3 py-3" />
                 </TableRow>

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/ui/page-header"
 import { PageShell } from "@/components/ui/page-shell"
 import { getCurrentUser } from "@/lib/auth"
+import { getSettings } from "@/models/settings"
 import { getCustomersWithInvoiceStats, getCustomerStats } from "@/models/customers"
 import { Plus } from "lucide-react"
 import { Metadata } from "next"
@@ -16,8 +17,11 @@ export const metadata: Metadata = {
 
 export default async function CustomersPage() {
   const user = await getCurrentUser()
-  const customers = await getCustomersWithInvoiceStats(user.id, { includeArchived: true })
-  const stats = await getCustomerStats(user.id)
+  const [customers, stats, settings] = await Promise.all([
+    getCustomersWithInvoiceStats(user.id, { includeArchived: true }),
+    getCustomerStats(user.id),
+    getSettings(user.id),
+  ])
 
   return (
     <PageShell>
@@ -27,7 +31,11 @@ export default async function CustomersPage() {
         actions={<CustomerEditPanel trigger={<Button><Plus /> Add Customer</Button>} />}
       />
       <CustomerSummaryCards stats={stats} />
-      <CustomerList customers={customers} />
+      <CustomerList
+        customers={customers}
+        initialColumnOrder={settings.customers_list_column_order}
+        initialColumnWidths={settings.customers_list_column_widths}
+      />
     </PageShell>
   )
 }

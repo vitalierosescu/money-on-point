@@ -11,7 +11,7 @@ export const FormSelectProject = ({
   isRequired = false,
   ...props
 }: {
-  title: string
+  title: React.ReactNode
   projects: Project[]
   emptyValue?: string
   placeholder?: string

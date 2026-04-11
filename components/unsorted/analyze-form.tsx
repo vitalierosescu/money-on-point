@@ -104,6 +104,7 @@ export default function AnalyzeForm({
   const [isDeletePending, startDeleteTransition] = useTransition()
   const warningRef = useRef<HTMLDivElement | null>(null)
   const dirtyFieldsRef = useRef<Set<string>>(new Set())
+  const [editedFields, setEditedFields] = useState<Set<string>>(new Set())
 
   const fieldMap = useMemo(() => {
     return fields.reduce(
@@ -116,6 +117,17 @@ export default function AnalyzeForm({
   }, [fields])
 
   const extraFields = useMemo(() => fields.filter((field) => field.isExtra), [fields])
+  const cachedParseFields = useMemo(() => {
+    if (!file.cachedParseResult || typeof file.cachedParseResult !== "object") {
+      return new Set<string>()
+    }
+
+    return new Set(
+      Object.entries(file.cachedParseResult as Record<string, unknown>)
+        .filter(([, value]) => value !== null && value !== undefined && value !== "")
+        .map(([key]) => key)
+    )
+  }, [file.cachedParseResult])
   const initialFormState = useMemo(() => {
     const baseState = {
       name: file.filename,
@@ -261,7 +273,36 @@ export default function AnalyzeForm({
 
   const updateField = (name: string, value: unknown) => {
     dirtyFieldsRef.current.add(name)
+    setEditedFields((prev) => new Set(prev).add(name))
     setFormData((prev) => ({ ...prev, [name]: value }))
+  }
+
+  function getFieldBadge(fieldCode: string) {
+    if (editedFields.has(fieldCode)) {
+      return (
+        <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-foreground">
+          {t(locale, "analyze.editedLabel")}
+        </span>
+      )
+    }
+
+    if (cachedParseFields.has(fieldCode)) {
+      return <span className="rounded-full bg-info/12 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-info">AI</span>
+    }
+
+    return null
+  }
+
+  function fieldTitle(title: string, fieldCode: string) {
+    const badge = getFieldBadge(fieldCode)
+    if (!badge) return title
+
+    return (
+      <span className="inline-flex flex-wrap items-center gap-2">
+        <span>{title}</span>
+        {badge}
+      </span>
+    )
   }
 
   async function handleDelete() {
@@ -376,7 +417,18 @@ export default function AnalyzeForm({
       <form className="space-y-4" action={saveAsTransaction} onSubmit={handleSubmit}>
         <input type="hidden" name="fileId" value={file.id} />
 
-        <div className="rounded-lg border bg-muted/20 p-4">
+        {cachedParseFields.size > 0 && (
+          <div className="rounded-card border border-info/20 bg-info/5 p-4">
+            <div className="text-sm font-semibold text-foreground">{t(locale, "analyze.aiSuggestionTitle")}</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {t(locale, "analyze.aiSuggestionDescription")}{" "}
+              <span className="rounded-full bg-info/12 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-info">AI</span>{" "}
+              <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-foreground">{t(locale, "analyze.editedLabel")}</span>
+            </p>
+          </div>
+        )}
+
+        <div className="rounded-card border bg-card p-4">
           <div className="text-sm font-semibold">{t(locale, "analyze.reviewTitle")}</div>
           <p className="mt-1 text-sm text-muted-foreground">{t(locale, "analyze.reviewDescription")}</p>
           <div className="mt-4 grid gap-3 md:grid-cols-3">
@@ -418,7 +470,7 @@ export default function AnalyzeForm({
         )}
 
         <FormInput
-          title={fieldMap.name.name}
+          title={fieldTitle(fieldMap.name.name, "name")}
           name="name"
           value={formData.name}
           onChange={(e) => updateField("name", e.target.value)}
@@ -426,7 +478,7 @@ export default function AnalyzeForm({
         />
 
         <MerchantAutocomplete
-          title={fieldMap.merchant.name}
+          title={fieldTitle(fieldMap.merchant.name, "merchant")}
           name="merchant"
           value={formData.merchant ?? ""}
           onChange={(next) => updateField("merchant", next)}
@@ -435,7 +487,7 @@ export default function AnalyzeForm({
         />
 
         <FormInput
-          title={fieldMap.description.name}
+          title={fieldTitle(fieldMap.description.name, "description")}
           name="description"
           value={formData.description}
           onChange={(e) => updateField("description", e.target.value)}
@@ -444,7 +496,7 @@ export default function AnalyzeForm({
 
         <div className="flex flex-wrap gap-4">
           <FormInput
-            title={fieldMap.total.name}
+            title={fieldTitle(fieldMap.total.name, "total")}
             name="total"
             type="number"
             step="0.01"
@@ -464,7 +516,7 @@ export default function AnalyzeForm({
           />
 
           <FormSelectCurrency
-            title={fieldMap.currencyCode.name}
+            title={fieldTitle(fieldMap.currencyCode.name, "currencyCode")}
             currencies={currencies}
             name="currencyCode"
             value={formData.currencyCode}
@@ -473,7 +525,7 @@ export default function AnalyzeForm({
           />
 
           <FormSelectType
-            title={fieldMap.type.name}
+            title={fieldTitle(fieldMap.type.name, "type")}
             name="type"
             value={formData.type}
             onValueChange={(value) => updateField("type", value)}
@@ -509,7 +561,7 @@ export default function AnalyzeForm({
 
         <div className="flex flex-row gap-4">
           <FormInput
-            title={fieldMap.issuedAt.name}
+            title={fieldTitle(fieldMap.issuedAt.name, "issuedAt")}
             type="date"
             name="issuedAt"
             value={formData.issuedAt}
@@ -520,7 +572,7 @@ export default function AnalyzeForm({
 
         <div className="flex flex-row gap-4">
           <FormSelectCategory
-            title={fieldMap.categoryCode.name}
+            title={fieldTitle(fieldMap.categoryCode.name, "categoryCode")}
             categories={categories}
             name="categoryCode"
             value={formData.categoryCode}
@@ -531,7 +583,7 @@ export default function AnalyzeForm({
 
           {projects.length > 0 && (
             <FormSelectProject
-              title={fieldMap.projectCode.name}
+              title={fieldTitle(fieldMap.projectCode.name, "projectCode")}
               projects={projects}
               name="projectCode"
               value={formData.projectCode}
@@ -543,7 +595,7 @@ export default function AnalyzeForm({
         </div>
 
         <FormInput
-          title={fieldMap.note.name}
+          title={fieldTitle(fieldMap.note.name, "note")}
           name="note"
           value={formData.note}
           onChange={(e) => updateField("note", e.target.value)}
@@ -554,7 +606,7 @@ export default function AnalyzeForm({
           <FormInput
             key={field.code}
             type="text"
-            title={field.name}
+            title={fieldTitle(field.name, field.code)}
             name={field.code}
             value={formData[field.code as keyof typeof formData]}
             onChange={(e) => updateField(field.code, e.target.value)}

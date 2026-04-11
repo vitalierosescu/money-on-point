@@ -121,6 +121,8 @@ export default async function ExpensesPage({
           fields={fields}
           projects={projects}
           defaultCurrency={defaultCurrency}
+          initialColumnOrder={settings.expenses_list_column_order}
+          initialColumnWidths={settings.expenses_list_column_widths}
           locale={locale}
         />
       </div>

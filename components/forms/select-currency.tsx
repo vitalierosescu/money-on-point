@@ -12,7 +12,7 @@ export const FormSelectCurrency = ({
   ...props
 }: {
   currencies: { code: string; name: string }[]
-  title?: string
+  title?: React.ReactNode
   emptyValue?: string
   placeholder?: string
   hideIfEmpty?: boolean

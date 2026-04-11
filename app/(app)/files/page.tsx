@@ -1,7 +1,11 @@
 import { FileLibrary } from "@/components/files/file-library"
+import { PageHeader } from "@/components/ui/page-header"
 import { PageShell } from "@/components/ui/page-shell"
 import { getCurrentUser } from "@/lib/auth"
+import { t } from "@/lib/i18n"
+import { getUiLocale } from "@/lib/locale"
 import { getFilesLibrary } from "@/models/files"
+import { getSettings } from "@/models/settings"
 import { Metadata } from "next"
 
 export const metadata: Metadata = {
@@ -10,24 +14,19 @@ export const metadata: Metadata = {
 
 export default async function FilesPage() {
   const user = await getCurrentUser()
-  const files = await getFilesLibrary(user.id)
+  const [files, settings] = await Promise.all([getFilesLibrary(user.id), getSettings(user.id)])
+  const locale = getUiLocale(settings)
 
   return (
     <PageShell>
-      <header className="mb-8 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">Files</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Search uploaded documents, preview them, and jump back to the linked invoice or expense.
-          </p>
-        </div>
-        <div className="rounded-lg border bg-card px-4 py-3 text-right">
-          <div className="text-xs uppercase tracking-wide text-muted-foreground">Library</div>
-          <div className="text-2xl font-semibold tabular-nums">{files.length}</div>
-        </div>
-      </header>
+      <PageHeader
+        title={t(locale, "files.title")}
+        count={files.length}
+        description={t(locale, "files.description")}
+        className="mb-space-6"
+      />
 
-      <FileLibrary files={files} />
+      <FileLibrary files={files} locale={locale} />
     </PageShell>
   )
 }

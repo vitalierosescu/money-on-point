@@ -5,6 +5,7 @@ import { InvoiceGenerator } from "@/components/invoices/invoice-generator"
 import type { ExtractedInvoice } from "@/ai/invoice-extraction-schema"
 import type { InvoiceTemplate } from "@/lib/invoice-pdf/templates"
 import type { AdditionalTax, InvoiceFormData, InvoiceItem } from "@/lib/invoice-pdf/types"
+import type { UiLocale } from "@/lib/locale"
 import type { SettingsMap } from "@/models/settings"
 import type { Currency, Customer, User } from "@/prisma/client"
 import { useMemo, useState } from "react"
@@ -30,6 +31,7 @@ export function NewInvoiceClient({
   appData,
   customers,
   nextInvoiceNumber,
+  locale,
 }: {
   user: User
   settings: SettingsMap
@@ -37,6 +39,7 @@ export function NewInvoiceClient({
   appData: InvoiceAppData | null
   customers: Customer[]
   nextInvoiceNumber: string
+  locale: UiLocale
 }) {
   const [extraction, setExtraction] = useState<ExtractionResult | null>(null)
 
@@ -50,6 +53,23 @@ export function NewInvoiceClient({
     return customers.find((c) => c.id === extraction.chosenCustomerId) ?? null
   }, [extraction, customers])
 
+  // When extraction found no matching customer, pre-fill the "new customer"
+  // form fields with whatever the LLM extracted from the PDF.
+  const initialNewCustomer = useMemo(() => {
+    if (!extraction || extraction.chosenCustomerId) return undefined
+    const c = extraction.extracted.customer
+    if (!c.name && !c.vatNumber) return undefined
+    return {
+      name: c.name || undefined,
+      country: c.country || undefined,
+      vatNumber: c.vatNumber || undefined,
+      street: c.street || undefined,
+      zipCode: c.zipCode || undefined,
+      city: c.city || undefined,
+      email: c.email || undefined,
+    }
+  }, [extraction])
+
   // Re-mount InvoiceGenerator when a new extraction lands so its
   // useReducer seed picks up the initialFormData. Without the key change,
   // the reducer keeps the state it computed on first mount.
@@ -61,18 +81,21 @@ export function NewInvoiceClient({
         onExtracted={setExtraction}
         onClear={() => setExtraction(null)}
         currentResult={extraction}
+        locale={locale}
       />
       <InvoiceGenerator
         key={generatorKey}
         appData={appData}
         customers={customers}
         currencies={currencies}
+        locale={locale}
         nextInvoiceNumber={nextInvoiceNumber}
         settings={settings}
         user={user}
         mode="create"
         initialFormData={initialFormData}
         initialCustomer={initialCustomer}
+        initialNewCustomer={initialNewCustomer}
         importMode={Boolean(extraction)}
         uploadedFileId={extraction?.fileId ?? null}
         uploadedFilePath={extraction?.filePath ?? null}

@@ -5,8 +5,11 @@ import { getCurrentUser } from "@/lib/auth"
 import { ReportsTabs } from "@/components/reports/reports-tabs"
 import { PageHeader } from "@/components/ui/page-header"
 import { PageShell } from "@/components/ui/page-shell"
+import { t } from "@/lib/i18n"
+import { getUiLocale } from "@/lib/locale"
 import { getMonthlyRevenue, getVatSummary, getTimeSeriesStats } from "@/models/stats"
 import { getOutstandingInvoices } from "@/models/invoices"
+import { getSettings } from "@/models/settings"
 
 export const metadata: Metadata = { title: "Reports" }
 
@@ -27,17 +30,19 @@ export default async function ReportsPage({
   const dateFrom = `${year}-01-01`
   const dateTo = `${year}-12-31`
 
-  const [monthlyRevenue, vatSummary, timeSeries, outstandingInvoices, authorRightsReport] = await Promise.all([
+  const [monthlyRevenue, vatSummary, timeSeries, outstandingInvoices, authorRightsReport, settings] = await Promise.all([
     getMonthlyRevenue(user.id, year),
     getVatSummary(user.id, year),
     getTimeSeriesStats(user.id, { dateFrom, dateTo }, defaultCurrency),
     getOutstandingInvoices(user.id),
     getAuthorRightsYearReport(user.id, year),
+    getSettings(user.id),
   ])
+  const locale = getUiLocale(settings)
 
   return (
     <PageShell>
-      <PageHeader title={`Reports — ${year}`} className="mb-space-6" />
+      <PageHeader title={t(locale, "reports.titleForYear", { year })} className="mb-space-6" />
       <ReportsTabs
         year={year}
         monthlyRevenue={monthlyRevenue}
@@ -46,6 +51,7 @@ export default async function ReportsPage({
         outstandingInvoices={outstandingInvoices}
         authorRightsReport={authorRightsReport}
         defaultCurrency={defaultCurrency}
+        locale={locale}
       />
     </PageShell>
   )

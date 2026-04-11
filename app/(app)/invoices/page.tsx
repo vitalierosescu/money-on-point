@@ -1,6 +1,7 @@
 import { InvoiceList } from "@/components/invoices/invoice-list"
 import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/ui/page-header"
+import { PageShell } from "@/components/ui/page-shell"
 import { getCurrentUser } from "@/lib/auth"
 import { t } from "@/lib/i18n"
 import { getUiLocale } from "@/lib/locale"
@@ -34,7 +35,7 @@ export default async function InvoicesPage({
   const recommandEnvironmentLabel = getRecommandEnvironmentLabel(activeRecommandEnvironment)
 
   return (
-    <>
+    <PageShell>
       <PageHeader
         title={t(locale, "invoices.title")}
         count={invoices.length}
@@ -57,11 +58,13 @@ export default async function InvoicesPage({
 
       <InvoiceList
         invoices={invoices}
+        initialColumnOrder={settings.invoices_list_column_order}
+        initialColumnWidths={settings.invoices_list_column_widths}
         locale={locale}
         hasRecommandCredentials={hasRecommandCredentials}
         recommandEnvironmentLabel={recommandEnvironmentLabel}
         sellerCountryCode={settings.business_country_code}
       />
-    </>
+    </PageShell>
   )
 }

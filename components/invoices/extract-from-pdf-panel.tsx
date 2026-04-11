@@ -3,6 +3,10 @@
 import { extractInvoiceFromPdfAction } from "@/ai/extract-invoice"
 import type { ExtractedInvoice } from "@/ai/invoice-extraction-schema"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import { SectionLabel } from "@/components/ui/section-label"
+import { t } from "@/lib/i18n"
+import type { UiLocale } from "@/lib/locale"
 import type { Customer } from "@/prisma/client"
 import { FileUp, Loader2, Sparkles, X } from "lucide-react"
 import { useRef, useState } from "react"
@@ -30,10 +34,12 @@ export function ExtractFromPdfPanel({
   onExtracted,
   onClear,
   currentResult,
+  locale,
 }: {
   onExtracted: (result: ExtractionResult) => void
   onClear: () => void
   currentResult: ExtractionResult | null
+  locale: UiLocale
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isExtracting, setIsExtracting] = useState(false)
@@ -53,8 +59,8 @@ export function ExtractFromPdfPanel({
       const result = await extractInvoiceFromPdfAction(formData)
 
       if (!result.success || !result.data) {
-        setError(result.error ?? "Extraction failed")
-        toast.error(result.error ?? "Extraction failed")
+        setError(result.error ?? t(locale, "invoices.extractFailed"))
+        toast.error(result.error ?? t(locale, "invoices.extractFailed"))
         return
       }
 
@@ -71,7 +77,7 @@ export function ExtractFromPdfPanel({
         chosenCustomerId,
       })
 
-      toast.success("Invoice fields extracted. Review and save.")
+      toast.success(t(locale, "invoices.extractSuccess"))
     } finally {
       setIsExtracting(false)
       if (fileInputRef.current) fileInputRef.current.value = ""
@@ -92,17 +98,16 @@ export function ExtractFromPdfPanel({
   // Empty state — just the dropzone
   if (!currentResult) {
     return (
-      <div className="rounded-lg border border-dashed border-border bg-secondary/20 p-5 mb-6">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+      <Card className="mb-6 border-dashed">
+        <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
               <Sparkles className="h-5 w-5" />
             </div>
-            <div>
-              <p className="font-medium">Start from a PDF</p>
-              <p className="text-sm text-muted-foreground">
-                Drop an existing invoice PDF and we&rsquo;ll pre-fill the form for you.
-              </p>
+            <div className="space-y-1">
+              <SectionLabel>{t(locale, "invoices.extractLabel")}</SectionLabel>
+              <p className="font-medium text-foreground">{t(locale, "invoices.extractTitle")}</p>
+              <p className="text-sm text-muted-foreground">{t(locale, "invoices.extractDescription")}</p>
             </div>
           </div>
           <div>
@@ -121,18 +126,18 @@ export function ExtractFromPdfPanel({
             >
               {isExtracting ? (
                 <>
-                  <Loader2 className="animate-spin" /> Extracting&hellip;
+                  <Loader2 className="animate-spin" /> {t(locale, "invoices.extracting")}
                 </>
               ) : (
                 <>
-                  <FileUp /> Upload PDF
+                  <FileUp /> {t(locale, "invoices.extractUpload")}
                 </>
               )}
             </Button>
           </div>
-        </div>
-        {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
-      </div>
+          {error && <p className="sm:basis-full text-sm text-destructive">{error}</p>}
+        </CardContent>
+      </Card>
     )
   }
 
@@ -141,29 +146,31 @@ export function ExtractFromPdfPanel({
   const extractedCustomerName = extracted.customer.name || "(no name extracted)"
 
   return (
-    <div className="rounded-lg border border-primary/30 bg-primary/5 p-5 mb-6">
+    <Card className="mb-6 border-primary/30 bg-primary/5">
+      <CardContent className="p-5">
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
             <Sparkles className="h-5 w-5" />
           </div>
           <div>
-            <p className="font-medium">Extracted from PDF</p>
+            <SectionLabel>{t(locale, "invoices.extractReadyLabel")}</SectionLabel>
+            <p className="font-medium text-foreground">{t(locale, "invoices.extractReadyTitle")}</p>
             <p className="text-sm text-muted-foreground">
-              Review the pre-filled fields below, then save. All fields are editable.
+              {t(locale, "invoices.extractReadyDescription")}
             </p>
             <dl className="mt-2 text-sm grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1">
-              <dt className="text-muted-foreground">Recipient:</dt>
+              <dt className="text-muted-foreground">{t(locale, "invoices.extractRecipientLabel")}</dt>
               <dd>{extractedCustomerName}</dd>
               {extracted.invoiceNumber && (
                 <>
-                  <dt className="text-muted-foreground">Invoice #:</dt>
+                  <dt className="text-muted-foreground">{t(locale, "invoices.extractInvoiceNumberLabel")}</dt>
                   <dd>{extracted.invoiceNumber}</dd>
                 </>
               )}
               {extracted.total > 0 && (
                 <>
-                  <dt className="text-muted-foreground">Total:</dt>
+                  <dt className="text-muted-foreground">{t(locale, "invoices.extractTotalLabel")}</dt>
                   <dd>
                     {extracted.currency || "EUR"} {extracted.total.toFixed(2)}
                   </dd>
@@ -171,9 +178,9 @@ export function ExtractFromPdfPanel({
               )}
               {extracted.items.length > 0 && (
                 <>
-                  <dt className="text-muted-foreground">Items:</dt>
+                  <dt className="text-muted-foreground">{t(locale, "invoices.extractItemsLabel")}</dt>
                   <dd>
-                    {extracted.items.length} line item{extracted.items.length === 1 ? "" : "s"}
+                    {t(locale, "invoices.extractItemsCount", { count: extracted.items.length })}
                   </dd>
                 </>
               )}
@@ -181,7 +188,7 @@ export function ExtractFromPdfPanel({
           </div>
         </div>
         <Button type="button" variant="ghost" size="sm" onClick={handleClear}>
-          <X /> Clear
+          <X /> {t(locale, "invoices.extractClear")}
         </Button>
       </div>
 
@@ -189,8 +196,8 @@ export function ExtractFromPdfPanel({
         <div className="mt-4 border-t border-primary/20 pt-3">
           <p className="text-sm font-medium mb-2">
             {matchedCustomers.length === 1
-              ? "Matched existing customer"
-              : `Found ${matchedCustomers.length} possible matches`}
+              ? t(locale, "invoices.extractMatchedCustomer")
+              : t(locale, "invoices.extractMatchedMany", { count: matchedCustomers.length })}
           </p>
           <div className="flex flex-wrap gap-2">
             {matchedCustomers.map((customer) => {
@@ -213,7 +220,7 @@ export function ExtractFromPdfPanel({
           </div>
           {chosenCustomerId === null && matchedCustomers.length > 1 && (
             <p className="mt-2 text-xs text-muted-foreground">
-              Click a customer to use them. Otherwise pick one below in the form.
+              {t(locale, "invoices.extractPickCustomerHint")}
             </p>
           )}
         </div>
@@ -221,9 +228,10 @@ export function ExtractFromPdfPanel({
 
       {matchedCustomers.length === 0 && (
         <p className="mt-3 text-sm text-muted-foreground">
-          No matching customer found. Pick or create one below in the form.
+          {t(locale, "invoices.extractNoCustomer")}
         </p>
       )}
-    </div>
+      </CardContent>
+    </Card>
   )
 }

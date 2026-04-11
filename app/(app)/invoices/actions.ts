@@ -350,6 +350,19 @@ export async function recordPaymentAction(
   return { success: true, data: result }
 }
 
+export async function revertInvoiceToDraftAction(id: string) {
+  const user = await getCurrentUser()
+  const invoice = await getInvoiceById(id, user.id)
+  if (!invoice) return { success: false, error: "Invoice not found" }
+  if (!["sent", "overdue", "partially_paid"].includes(invoice.status)) {
+    return { success: false, error: "Only sent invoices can be reverted to draft." }
+  }
+  await updateInvoiceStatus(id, user.id, "draft")
+  revalidatePath("/invoices")
+  revalidatePath(`/invoices/${id}`)
+  return { success: true }
+}
+
 export async function cancelInvoiceAction(id: string) {
   const user = await getCurrentUser()
   const invoice = await getInvoiceById(id, user.id)

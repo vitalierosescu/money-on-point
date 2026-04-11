@@ -9,7 +9,6 @@ import { FormError } from "@/components/forms/error"
 import {
   classifyInvoiceDeliveryRequirement,
   getCustomerBillingEmails,
-  getInvoiceDeliveryMethodLabel,
   normalizeInvoiceDeliveryMethod,
 } from "@/lib/invoice-delivery"
 import { getBelgianAuthorRightsRule, isAuthorRightsMode } from "@/lib/author-rights"
@@ -20,6 +19,8 @@ import {
 } from "@/lib/recommand-settings"
 import { buildAuthorRightsData, getInvoiceTaxAmount, getInvoiceTotalAmount, getPersistedTaxes } from "@/lib/invoice-totals"
 import { fetchAsBase64 } from "@/lib/utils"
+import { t } from "@/lib/i18n"
+import { DEFAULT_UI_LOCALE, type UiLocale } from "@/lib/locale"
 import { generateInvoicePDF } from "@/lib/invoice-pdf/generate"
 import defaultTemplates, { InvoiceTemplate } from "@/lib/invoice-pdf/templates"
 import { InvoiceFormData } from "@/lib/invoice-pdf/types"
@@ -186,7 +187,7 @@ function InlineHint({ text }: { text: string }) {
         <button
           type="button"
           className="inline-flex h-4 w-4 items-center justify-center text-muted-foreground hover:text-foreground"
-          aria-label="Meer info"
+          aria-label="More info"
         >
           <CircleHelp className="h-4 w-4" />
         </button>
@@ -200,15 +201,18 @@ export function InvoiceGenerator({
   user,
   settings,
   currencies,
+  locale = DEFAULT_UI_LOCALE,
   appData,
   customers,
   nextInvoiceNumber,
   mode,
   invoiceId,
   initialCustomer,
+  initialNewCustomer,
   initialDeliveryMethod,
   initialFormData: initialFormDataProp,
   importMode = false,
+  importModeBannerText,
   uploadedFileId = null,
   uploadedFilePath = null,
   uploadedPreviewImages = [],
@@ -216,12 +220,14 @@ export function InvoiceGenerator({
   user: User
   settings: SettingsMap
   currencies: Currency[]
+  locale?: UiLocale
   appData?: InvoiceAppData | null
   customers?: Customer[]
   nextInvoiceNumber?: string
   mode?: "create" | "edit"
   invoiceId?: string
   initialCustomer?: Customer | null
+  initialNewCustomer?: { name?: string; country?: string; vatNumber?: string; street?: string; zipCode?: string; city?: string; email?: string }
   initialDeliveryMethod?: string | null
   initialFormData?: Partial<InvoiceFormData>
   /** When true, the form is displaying data extracted from an uploaded
@@ -230,6 +236,8 @@ export function InvoiceGenerator({
    *  banner and Send button are hidden, and the live preview pane shows
    *  the uploaded PDF pages instead of the reconstructed HTML preview. */
   importMode?: boolean
+  /** Override the banner text shown when importMode is true. */
+  importModeBannerText?: string
   uploadedFileId?: string | null
   uploadedFilePath?: string | null
   uploadedPreviewImages?: string[]
@@ -325,94 +333,94 @@ export function InvoiceGenerator({
     const blockers: string[] = []
 
     if (!selectedCustomer) {
-      blockers.push("Selecteer eerst een klant.")
+      blockers.push(t(locale, "invoices.editor.blockerSelectCustomer"))
     }
     if (selectedCustomer && !deliveryCompliance.scopeKnown) {
-      blockers.push(deliveryCompliance.message ?? "Vul eerst de compliance-gegevens van deze klant aan.")
+      blockers.push(deliveryCompliance.message ?? t(locale, "invoices.editor.blockerCompliance"))
     }
     if (!formData.invoiceNumber.trim()) {
-      blockers.push("Voeg een factuurnummer toe.")
+      blockers.push(t(locale, "invoices.editor.blockerInvoiceNumber"))
     }
     if (!isValidDateString(formData.date)) {
-      blockers.push("Voeg een geldige factuurdatum toe.")
+      blockers.push(t(locale, "invoices.editor.blockerIssueDate"))
     }
     if (!isValidDateString(formData.dueDate)) {
-      blockers.push("Voeg een geldige vervaldatum toe.")
+      blockers.push(t(locale, "invoices.editor.blockerDueDate"))
     }
     if (isValidDateString(formData.date) && isValidDateString(formData.dueDate)) {
       if (new Date(formData.dueDate) < new Date(formData.date)) {
-        blockers.push("De vervaldatum mag niet voor de factuurdatum liggen.")
+        blockers.push(t(locale, "invoices.editor.blockerDueBeforeIssue"))
       }
     }
     if (!hasValidInvoiceItem(formData)) {
-      blockers.push("Voeg minstens een factuurlijn toe met aantal en prijs.")
+      blockers.push(t(locale, "invoices.editor.blockerItems"))
     }
     if (!formData.companyDetails.trim()) {
-      blockers.push("Vul je bedrijfsgegevens aan.")
+      blockers.push(t(locale, "invoices.editor.blockerCompanyDetails"))
     }
     if (!formData.bankDetails.trim()) {
-      blockers.push("Vul je betaalgegevens aan.")
+      blockers.push(t(locale, "invoices.editor.blockerBankDetails"))
     }
     if (isAuthorRightsInvoice) {
       if (!formData.authorRightsContractReference.trim()) {
-        blockers.push("Voeg een contractreferentie toe voor auteursrechten.")
+        blockers.push(t(locale, "invoices.editor.blockerAuthorRightsContract"))
       }
       if (!isValidDateString(formData.authorRightsAgreementDate)) {
-        blockers.push("Voeg een geldige datum van overeenkomst toe.")
+        blockers.push(t(locale, "invoices.editor.blockerAuthorRightsAgreementDate"))
       }
       if (!formData.authorRightsEligibilityAcknowledged) {
-        blockers.push("Bevestig eerst de auteursrechten-voorwaarden.")
+        blockers.push(t(locale, "invoices.editor.blockerAuthorRightsEligibility"))
       }
       if (!authorRightsRule) {
-        blockers.push(`Belgische auteursrechtenregels voor ${formData.authorRightsRuleYear} ontbreken nog in TaxHacker.`)
+        blockers.push(t(locale, "invoices.editor.blockerAuthorRightsRuleMissing", { year: formData.authorRightsRuleYear }))
       }
     }
 
     if (isAuthorRightsInvoice && deliveryCompliance.requiresStructuredInvoice && !deliveryCompliance.allowEmailFallback) {
-      blockers.push(
-        "Belgische B2B-auteursrechtenfacturen vereisen PEPPOL zodra die modus ondersteund is. Sla eerst op, verifieer de ontvanger en gebruik alleen e-mailfallback als de klant niet PEPPOL-ready is."
-      )
+      blockers.push(t(locale, "invoices.editor.blockerAuthorRightsPeppol"))
     } else if (isAuthorRightsInvoice && isPeppol) {
-      blockers.push("Auteursrechtenfacturen kunnen momenteel enkel via e-mail + PDF verzonden worden.")
+      blockers.push(t(locale, "invoices.editor.blockerAuthorRightsEmailOnly"))
     } else if (isPeppol) {
       if (deliveryCompliance.allowEmailFallback) {
-        blockers.push(deliveryCompliance.message ?? "Deze factuur mag via e-mail verstuurd worden na PEPPOL-fallback.")
+        blockers.push(deliveryCompliance.message ?? t(locale, "invoices.editor.blockerPeppolFallback"))
       }
       if (!selectedCustomer?.peppolId?.trim()) {
-        blockers.push("Voeg een PEPPOL-ID toe voor deze klant.")
+        blockers.push(t(locale, "invoices.editor.blockerPeppolId"))
       }
       if (!selectedCustomer?.vatNumber?.trim()) {
-        blockers.push("Voeg het btw-nummer van deze klant toe voor PEPPOL.")
+        blockers.push(t(locale, "invoices.editor.blockerCustomerVat"))
       }
       if (!hasCompletePostalAddress(selectedCustomer)) {
-        blockers.push("Vul het volledige adres van deze klant in voor PEPPOL.")
+        blockers.push(t(locale, "invoices.editor.blockerCustomerAddress"))
       }
       if (!settings.business_iban?.trim()) {
-        blockers.push("Voeg eerst je IBAN toe in Instellingen voordat je via PEPPOL verzendt.")
+        blockers.push(t(locale, "invoices.editor.blockerIban"))
       }
       if (
         !settings.business_street_line1?.trim() ||
         !settings.business_city?.trim() ||
         !settings.business_postal_code?.trim()
       ) {
-        blockers.push("Vul eerst je afzendergegevens aan in Instellingen voordat je via PEPPOL verzendt.")
+        blockers.push(t(locale, "invoices.editor.blockerSenderDetails"))
       }
       if (!hasConfiguredRecommandCredentials(settings)) {
         const environment = getRecommandEnvironmentLabel(getActiveRecommandEnvironment(settings))
-        blockers.push(`Vul eerst je Recommand-gegevens aan voor de actieve ${environment}-omgeving.`)
+        blockers.push(t(locale, "invoices.editor.blockerRecommand", { environment }))
       }
     } else {
       if (deliveryCompliance.requiresStructuredInvoice && !deliveryCompliance.allowEmailFallback) {
-        blockers.push(deliveryCompliance.message ?? "Deze factuur moet via PEPPOL worden verstuurd.")
+        blockers.push(deliveryCompliance.message ?? t(locale, "invoices.editor.blockerMustUsePeppol"))
       }
       if (billingEmails.length === 0) {
-        blockers.push("Voeg eerst een facturatie-e-mailadres toe voor deze klant.")
+        blockers.push(t(locale, "invoices.editor.blockerBillingEmail"))
       }
     }
 
     return blockers
-  }, [authorRightsRule, billingEmails.length, deliveryCompliance, formData, isAuthorRightsInvoice, isPeppol, selectedCustomer, settings])
-  const primaryActionLabel = isPeppol ? "Factuur verzenden via PEPPOL" : "Factuur verzenden via e-mail"
+  }, [authorRightsRule, billingEmails.length, deliveryCompliance, formData, isAuthorRightsInvoice, isPeppol, locale, selectedCustomer, settings])
+  const primaryActionLabel = isPeppol
+    ? t(locale, "invoices.editor.sendPeppol")
+    : t(locale, "invoices.editor.sendEmail")
 
   const handleTemplateSelect = (templateName: string) => {
     const template = templates.find((t) => t.name === templateName)
@@ -444,7 +452,7 @@ export function InvoiceGenerator({
       URL.revokeObjectURL(url)
     } catch (error) {
       console.error("Error generating PDF:", error)
-      setSaveError("PDF genereren mislukt. Probeer opnieuw.")
+      setSaveError(t(locale, "invoices.editor.generatePdfFailed"))
     } finally {
       setIsPdfLoading(false)
     }
@@ -453,12 +461,12 @@ export function InvoiceGenerator({
   const handleSaveTemplate = async () => {
     setTemplateError("")
     if (!newTemplateName.trim()) {
-      setTemplateError("Voer een templatenaam in.")
+      setTemplateError(t(locale, "invoices.editor.templateNameRequired"))
       return
     }
 
     if (templates.some((t) => t.name === newTemplateName)) {
-      setTemplateError("Er bestaat al een template met deze naam.")
+      setTemplateError(t(locale, "invoices.editor.templateNameExists"))
       return
     }
 
@@ -475,11 +483,11 @@ export function InvoiceGenerator({
         setTemplateError("")
         router.refresh()
       } else {
-        setTemplateError("Template opslaan mislukt. Probeer opnieuw.")
+        setTemplateError(t(locale, "invoices.editor.templateSaveFailed"))
       }
     } catch (error) {
       console.error("Error saving template:", error)
-      setTemplateError("Template opslaan mislukt. Probeer opnieuw.")
+      setTemplateError(t(locale, "invoices.editor.templateSaveFailed"))
     }
   }
 
@@ -494,7 +502,7 @@ export function InvoiceGenerator({
       }
     } catch (error) {
       console.error("Error deleting template:", error)
-      alert("Failed to delete template. Please try again.")
+      alert(t(locale, "invoices.editor.templateDeleteFailed"))
     }
   }
 
@@ -515,7 +523,7 @@ export function InvoiceGenerator({
 
   const persistInvoice = async (status: "draft" | "sent") => {
     if (!selectedCustomer) {
-      setSaveError("Selecteer eerst een klant voordat je de factuur opslaat.")
+      setSaveError(t(locale, "invoices.editor.saveRequiresCustomer"))
       return null
     }
 
@@ -557,20 +565,20 @@ export function InvoiceGenerator({
           : await createInvoiceAction(payload)
 
       if (!result.success) {
-        setSaveError(result.error || "Opslaan mislukt. Probeer opnieuw.")
+        setSaveError(result.error || t(locale, "invoices.editor.saveFailed"))
         return null
       }
 
       const persistedInvoiceId = result.data?.id ?? invoiceId ?? null
       if (!persistedInvoiceId) {
-        setSaveError("Opslaan mislukt. Probeer opnieuw.")
+        setSaveError(t(locale, "invoices.editor.saveFailed"))
         return null
       }
 
       return persistedInvoiceId
     } catch (error) {
       console.error("Error saving invoice:", error)
-      setSaveError("Opslaan mislukt. Probeer opnieuw.")
+      setSaveError(t(locale, "invoices.editor.saveFailed"))
       return null
     } finally {
       setIsSavingInvoice(false)
@@ -606,7 +614,9 @@ export function InvoiceGenerator({
 
     if (!sendResult.success) {
       alert(
-        `De factuur werd opgeslagen, maar verzenden mislukte: ${sendResult.error || "Onbekende fout"}. Je kunt opnieuw proberen vanaf de factuurpagina.`
+        t(locale, "invoices.editor.sendFailedAfterSave", {
+          error: sendResult.error || t(locale, "invoices.editor.unknownError"),
+        })
       )
       window.location.href = `/invoices/${persistedInvoiceId}`
       return
@@ -637,13 +647,22 @@ export function InvoiceGenerator({
 
   return (
     <TooltipProvider delayDuration={100}>
-      <div className="flex flex-col gap-6">
+      {/* Density scope: the invoice form's default Input primitive is
+          h-10 / text-base which reads oversized when you're filling in
+          20+ fields at once. Arbitrary child variants shrink every
+          descendant text-ish input, textarea, and native select to a
+          tighter h-9 / text-sm without touching the rest of the app.
+          Checkboxes, radios, and file inputs are excluded so they keep
+          their intrinsic sizes. The already-compact item/tax/fee row
+          inputs (h-8) harmlessly round up to h-9 here, which is still
+          smaller than the old h-10 baseline. */}
+      <div className="flex flex-col gap-6 [&_input:not([type=checkbox]):not([type=radio]):not([type=file])]:h-9 [&_input:not([type=checkbox]):not([type=radio]):not([type=file])]:text-sm [&_textarea]:text-sm [&_select]:h-9 [&_select]:text-sm">
         {/* Preview splits off to the side only at xl (1280px+). Below
             that it stacks below the form so the form column gets the
             full content width \u2014 enough for the nested Klant/Verzendmethode,
             Van/Aan, and Btw/summary sub-grids to breathe without
             crashing into each other. */}
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_440px] xl:items-start">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_300px] xl:items-start">
           <div className="flex min-w-0 flex-col gap-6 xl:max-h-[calc(100vh-180px)] xl:overflow-y-auto xl:pr-2">
             {(mode === "create" || mode === "edit") && customers && (
               // Klant + Verzendmethode share the row equally. The old
@@ -655,13 +674,14 @@ export function InvoiceGenerator({
                 <section className="rounded-xl border bg-card p-5 min-w-0">
                   <div className="flex items-center gap-2">
                     <h2 className="text-sm font-semibold">Klant</h2>
-                    <InlineHint text="Kies een bestaande klant of maak meteen een nieuwe. De ontvangergegevens worden automatisch ingevuld." />
+                    <InlineHint text={t(locale, "invoices.editor.customerHint")} />
                   </div>
                   <div className="mt-3">
                     <CustomerPicker
                       customers={customers}
                       selectedCustomer={selectedCustomer}
                       onSelect={handleCustomerSelect}
+                      initialNewCustomer={initialNewCustomer}
                     />
                   </div>
                 </section>
@@ -669,7 +689,7 @@ export function InvoiceGenerator({
                 <section className="rounded-xl border bg-card p-5 min-w-0">
                   <div className="flex items-center gap-2">
                     <h2 className="text-sm font-semibold">Verzendmethode</h2>
-                    <InlineHint text="Kies de aflevermethode. De hoofdactie gebruikt deze keuze meteen voor verzending." />
+                    <InlineHint text={t(locale, "invoices.editor.deliveryHint")} />
                   </div>
                   {/* Side-by-side selectable options instead of a dropdown.
                       Flex-wrap so they stack on narrow cards. Author-rights
@@ -686,9 +706,9 @@ export function InvoiceGenerator({
                             : "border-border bg-background hover:border-primary hover:bg-secondary/40"
                         }`}
                         aria-pressed={deliveryMethod === "peppol"}
-                      >
-                        {getInvoiceDeliveryMethodLabel("peppol")}
-                      </button>
+                    >
+                      {t(locale, "invoices.editor.deliveryPeppol")}
+                    </button>
                     )}
                     <button
                       type="button"
@@ -701,15 +721,15 @@ export function InvoiceGenerator({
                       } disabled:pointer-events-none disabled:opacity-50`}
                       aria-pressed={deliveryMethod === "email_pdf"}
                     >
-                      {getInvoiceDeliveryMethodLabel("email_pdf")}
+                      {t(locale, "invoices.editor.deliveryEmailPdf")}
                     </button>
                   </div>
                   <div className="mt-2 text-xs text-muted-foreground">
                     {isAuthorRightsInvoice
-                      ? "Auteursrechtenmodus gebruikt enkel e-mail met PDF."
+                      ? t(locale, "invoices.editor.deliveryAuthorRightsOnly")
                       : isPeppol
-                        ? "PEPPOL-validatie actief"
-                        : "E-mail met PDF-bijlage"}
+                        ? t(locale, "invoices.editor.deliveryPeppolActive")
+                        : t(locale, "invoices.editor.deliveryEmailActive")}
                   </div>
                   {isPeppol && (
                     <div className={`mt-3 inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${peppolEnvironmentTone}`}>
@@ -756,18 +776,18 @@ export function InvoiceGenerator({
                     {isPdfLoading ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        PDF voorbereiden...
+                        {t(locale, "invoices.editor.preparingPdf")}
                       </>
                     ) : (
                       <>
                         <FileDown className="mr-2 h-4 w-4" />
-                        PDF downloaden
+                        {t(locale, "invoices.editor.downloadPdf")}
                       </>
                     )}
                   </Button>
                   <Button variant="secondary" onClick={() => setIsTemplateDialogOpen(true)}>
                     <TextSelect className="mr-2 h-4 w-4" />
-                    Als template bewaren
+                    {t(locale, "invoices.editor.saveAsTemplate")}
                   </Button>
                 </div>
               </div>
@@ -781,6 +801,7 @@ export function InvoiceGenerator({
               isBillToAutofill={isBillToAutofill}
               setCompanyDetailsAutofill={setIsCompanyDetailsAutofill}
               setBillToAutofill={setIsBillToAutofill}
+              locale={locale}
             />
 
             <section className="rounded-xl border bg-card p-5">
@@ -798,14 +819,13 @@ export function InvoiceGenerator({
                   </div>
                 ) : (
                   <div className="mb-4 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
-                    Klaar om te verzenden.
+                    {t(locale, "invoices.editor.readyToSend")}
                   </div>
                 ))}
 
               {importMode && (
                 <div className="mb-4 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm text-foreground">
-                  Imported from PDF. Save as draft to keep editing, or save
-                  as sent to record it as already delivered externally.
+                  {importModeBannerText ?? t(locale, "invoices.importBannerDefault")}
                 </div>
               )}
 
@@ -828,7 +848,7 @@ export function InvoiceGenerator({
                     ) : (
                       <Save className="mr-2 h-4 w-4" />
                     )}
-                    Save as draft
+                    {t(locale, "invoices.editor.saveAsDraft")}
                   </Button>
                   <Button
                     className="sm:flex-1"
@@ -840,7 +860,7 @@ export function InvoiceGenerator({
                     ) : (
                       <Save className="mr-2 h-4 w-4" />
                     )}
-                    Save as sent
+                    {t(locale, "invoices.editor.saveAsSent")}
                   </Button>
                 </div>
               ) : (
@@ -851,7 +871,7 @@ export function InvoiceGenerator({
                     ) : (
                       <Save className="mr-2 h-4 w-4" />
                     )}
-                    Opslaan als concept
+                    {t(locale, "invoices.editor.saveAsConcept")}
                   </Button>
                   <Button
                     className="sm:flex-1"
@@ -872,12 +892,13 @@ export function InvoiceGenerator({
 
               {isPeppol && !importMode && (
                 <p className="mt-2 text-center text-xs text-muted-foreground">
-                  Active PEPPOL environment: <span className="font-medium">{activePeppolEnvironmentLabel}</span>
+                  {t(locale, "invoices.editor.activePeppolEnvironment")}{" "}
+                  <span className="font-medium">{activePeppolEnvironmentLabel}</span>
                 </p>
               )}
               {!importMode && (
                 <p className="mt-2 text-center text-xs text-muted-foreground">
-                  &#8984;S concept opslaan &middot; &#8984;&#9166; verzenden
+                  {t(locale, "invoices.editor.shortcuts")}
                 </p>
               )}
             </section>
@@ -888,18 +909,20 @@ export function InvoiceGenerator({
               <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-2">
                   <h2 className="text-sm font-semibold">
-                    {importMode && uploadedPreviewImages.length > 0 ? "Imported PDF" : "Live preview"}
+                    {importMode && uploadedPreviewImages.length > 0
+                      ? t(locale, "invoices.editor.importedPdf")
+                      : t(locale, "invoices.editor.livePreview")}
                   </h2>
                   <InlineHint
                     text={
                       importMode && uploadedPreviewImages.length > 0
-                        ? "Exacte weergave van het geüploade PDF-bestand."
-                        : "Voorbeeld van de factuur zoals ze eruitziet bij verzending en PDF-export."
+                        ? t(locale, "invoices.editor.importedPdfHint")
+                        : t(locale, "invoices.editor.livePreviewHint")
                     }
                   />
                 </div>
                 {!importMode && (
-                  <span className="text-xs text-muted-foreground">Wordt live bijgewerkt</span>
+                  <span className="text-xs text-muted-foreground">{t(locale, "invoices.editor.livePreviewUpdates")}</span>
                 )}
               </div>
               {importMode && uploadedPreviewImages.length > 0 ? (
@@ -909,13 +932,14 @@ export function InvoiceGenerator({
                     <img
                       key={idx}
                       src={src}
-                      alt={`Imported PDF page ${idx + 1}`}
+                      alt={t(locale, "invoices.editor.importedPdfPageAlt", { count: idx + 1 })}
                       className="w-full rounded-md border"
                     />
                   ))}
                 </div>
               ) : (
                 <InvoicePreview
+                  locale={locale}
                   templateData={formData}
                   className="max-h-[calc(100vh-180px)] overflow-y-auto rounded-xl border shadow-sm"
                 />
@@ -925,26 +949,26 @@ export function InvoiceGenerator({
         </div>
 
         <Dialog open={isTemplateDialogOpen} onOpenChange={setIsTemplateDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Template opslaan</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-2 py-4">
-              <Input
-                type="text"
-                value={newTemplateName}
-                onChange={(e) => setNewTemplateName(e.target.value)}
-                placeholder="Naam van template"
-              />
-              {templateError && <p className="text-sm text-destructive">{templateError}</p>}
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsTemplateDialogOpen(false)}>
-                Annuleren
-              </Button>
-              <Button onClick={handleSaveTemplate}>Opslaan</Button>
-            </DialogFooter>
-          </DialogContent>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{t(locale, "invoices.editor.saveTemplateTitle")}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-2 py-4">
+                <Input
+                  type="text"
+                  value={newTemplateName}
+                  onChange={(e) => setNewTemplateName(e.target.value)}
+                  placeholder={t(locale, "invoices.editor.templateNamePlaceholder")}
+                />
+                {templateError && <p className="text-sm text-destructive">{templateError}</p>}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsTemplateDialogOpen(false)}>
+                  {t(locale, "common.cancel")}
+                </Button>
+                <Button onClick={handleSaveTemplate}>{t(locale, "common.save")}</Button>
+              </DialogFooter>
+            </DialogContent>
         </Dialog>
       </div>
     </TooltipProvider>

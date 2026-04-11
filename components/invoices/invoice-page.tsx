@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button"
 import { NativeSelect } from "@/components/ui/native-select"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { getBelgianAuthorRightsRule, isAuthorRightsMode, type AuthorRightsSplitPreset } from "@/lib/author-rights"
+import { t } from "@/lib/i18n"
+import type { UiLocale } from "@/lib/locale"
 import { buildAuthorRightsData, getInvoiceTaxAmount, getInvoiceTotalAmount } from "@/lib/invoice-totals"
 import { formatCurrency } from "@/lib/utils"
 import { AdditionalFee, AdditionalTax, InvoiceFormData, InvoiceItem } from "@/lib/invoice-pdf/types"
@@ -25,6 +27,7 @@ interface InvoicePageProps {
   isBillToAutofill: boolean
   setCompanyDetailsAutofill: (value: boolean) => void
   setBillToAutofill: (value: boolean) => void
+  locale: UiLocale
 }
 
 function InlineHint({ text }: { text: string }) {
@@ -34,7 +37,7 @@ function InlineHint({ text }: { text: string }) {
         <button
           type="button"
           className="inline-flex h-4 w-4 items-center justify-center text-muted-foreground hover:text-foreground"
-          aria-label="Meer info"
+          aria-label="More info"
         >
           <CircleHelp className="h-4 w-4" />
         </button>
@@ -51,7 +54,10 @@ function InlineHint({ text }: { text: string }) {
  * table it eats too much vertical + horizontal space and makes small
  * numeric values (quantity 0.5, unit price 1250) look disproportionate.
  */
-const COMPACT_INPUT = "h-8 text-sm"
+// !-prefixed so the ancestor density scope in invoice-generator.tsx
+// (which forces h-9 on all descendant inputs) doesn't override these
+// tight table-cell inputs back up to h-9.
+const COMPACT_INPUT = "!h-8 !text-sm"
 
 const ItemRow = memo(function ItemRow({
   item,
@@ -59,12 +65,14 @@ const ItemRow = memo(function ItemRow({
   onChange,
   onRemove,
   currency,
+  locale,
 }: {
   item: InvoiceItem
   index: number
   onChange: (index: number, field: keyof InvoiceItem, value: string | number | boolean) => void
   onRemove: (index: number) => void
   currency: string
+  locale: UiLocale
 }) {
   return (
     // Narrower numeric columns: realistic quantities (0.5, 1, 8) never
@@ -77,7 +85,7 @@ const ItemRow = memo(function ItemRow({
           value={item.name}
           onChange={(e) => onChange(index, "name", e.target.value)}
           className={`w-full min-w-0 ${COMPACT_INPUT}`}
-          placeholder="Itemnaam"
+          placeholder={t(locale, "invoices.form.itemNamePlaceholder")}
           required
         />
         {!item.showSubtitle ? (
@@ -86,7 +94,7 @@ const ItemRow = memo(function ItemRow({
             className="mt-0.5 ml-1 text-xs text-muted-foreground hover:text-foreground"
             onClick={() => onChange(index, "showSubtitle", true)}
           >
-            + Beschrijving toevoegen
+            {t(locale, "invoices.form.addDescription")}
           </button>
         ) : (
           // Subtitle renders as a quieter sub-line directly under the
@@ -97,8 +105,11 @@ const ItemRow = memo(function ItemRow({
             type="text"
             value={item.subtitle}
             onChange={(e) => onChange(index, "subtitle", e.target.value)}
-            className="mt-0.5 w-full bg-transparent px-1 py-0.5 text-xs italic text-muted-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring focus:rounded-sm"
-            placeholder="Beschrijving (optioneel)"
+            // !h-auto / !text-xs override the ancestor density scope in
+            // invoice-generator.tsx that otherwise forces h-9 / text-sm
+            // on every descendant text input.
+            className="mt-0.5 w-full bg-transparent px-1 py-0.5 !h-auto !text-xs italic text-muted-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-ring focus:rounded-sm"
+            placeholder={t(locale, "invoices.form.itemDescriptionPlaceholder")}
           />
         )}
       </div>
@@ -120,7 +131,7 @@ const ItemRow = memo(function ItemRow({
         className={`w-full text-right tabular-nums ${COMPACT_INPUT}`}
         required
       />
-      <div className="w-full text-right text-sm font-medium tabular-nums">{formatCurrency(item.subtotal * 100, currency)}</div>
+      <div className="w-full text-right text-sm font-medium tabular-nums">{formatCurrency(item.subtotal * 100, currency, locale)}</div>
       <div className="w-full sm:w-auto flex justify-end">
         {/* Subtle delete: ghost, muted, hover reveals destructive tint.
             Deletion is a rare secondary action, not a primary one. */}
@@ -130,7 +141,7 @@ const ItemRow = memo(function ItemRow({
           size="icon"
           className="h-7 w-7 rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
           onClick={() => onRemove(index)}
-          aria-label="Verwijder regel"
+          aria-label={t(locale, "invoices.form.removeLineItem")}
         >
           <X className="h-3.5 w-3.5" />
         </Button>
@@ -145,22 +156,24 @@ const TaxRow = memo(function TaxRow({
   onChange,
   onRemove,
   currency,
+  locale,
 }: {
   tax: AdditionalTax
   index: number
   onChange: (index: number, field: keyof AdditionalTax, value: string | number) => void
   onRemove: (index: number) => void
   currency: string
+  locale: UiLocale
 }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <Button
         type="button"
         variant="ghost"
         size="icon"
         className="h-7 w-7 rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
         onClick={() => onRemove(index)}
-        aria-label="Verwijder btw"
+        aria-label={t(locale, "invoices.form.removeTax")}
       >
         <X className="h-3.5 w-3.5" />
       </Button>
@@ -168,7 +181,7 @@ const TaxRow = memo(function TaxRow({
         type="text"
         value={tax.name}
         onChange={(e) => onChange(index, "name", e.target.value)}
-        placeholder="Belastingnaam"
+        placeholder={t(locale, "invoices.form.taxNamePlaceholder")}
         className={`w-28 ${COMPACT_INPUT}`}
       />
       <FormInput
@@ -179,7 +192,7 @@ const TaxRow = memo(function TaxRow({
         className={`w-14 text-right tabular-nums ${COMPACT_INPUT}`}
       />
       <span className="text-xs text-muted-foreground">%</span>
-      <span className="ml-auto text-sm tabular-nums">{formatCurrency(tax.amount * 100, currency)}</span>
+      <span className="text-sm tabular-nums text-muted-foreground">{formatCurrency(tax.amount * 100, currency, locale)}</span>
     </div>
   )
 })
@@ -189,13 +202,13 @@ const FeeRow = memo(function FeeRow({
   index,
   onChange,
   onRemove,
-  currency,
+  locale,
 }: {
   fee: AdditionalFee
   index: number
   onChange: (index: number, field: keyof AdditionalFee, value: string | number) => void
   onRemove: (index: number) => void
-  currency: string
+  locale: UiLocale
 }) {
   return (
     <div className="flex items-center gap-2">
@@ -205,7 +218,7 @@ const FeeRow = memo(function FeeRow({
         size="icon"
         className="h-7 w-7 rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
         onClick={() => onRemove(index)}
-        aria-label="Verwijder toeslag"
+        aria-label={t(locale, "invoices.form.removeFee")}
       >
         <X className="h-3.5 w-3.5" />
       </Button>
@@ -213,7 +226,7 @@ const FeeRow = memo(function FeeRow({
         type="text"
         value={fee.name}
         onChange={(e) => onChange(index, "name", e.target.value)}
-        placeholder="Toeslag of korting"
+        placeholder={t(locale, "invoices.form.feePlaceholder")}
         className={`flex-1 ${COMPACT_INPUT}`}
       />
       <FormInput
@@ -223,7 +236,6 @@ const FeeRow = memo(function FeeRow({
         onChange={(e) => onChange(index, "amount", Number(e.target.value))}
         className={`w-20 text-right tabular-nums ${COMPACT_INPUT}`}
       />
-      <span className="ml-auto text-sm tabular-nums">{formatCurrency(fee.amount * 100, currency)}</span>
     </div>
   )
 })
@@ -236,6 +248,7 @@ export function InvoicePage({
   isBillToAutofill,
   setCompanyDetailsAutofill,
   setBillToAutofill,
+  locale,
 }: InvoicePageProps) {
   const addItem = useCallback(() => dispatch({ type: "ADD_ITEM" }), [dispatch])
   const removeItem = useCallback((index: number) => dispatch({ type: "REMOVE_ITEM", index }), [dispatch])
@@ -319,27 +332,27 @@ export function InvoicePage({
     <div className="space-y-4">
       <section className="rounded-xl border bg-card p-4">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-semibold">Documentdetails</h3>
-          <InlineHint text="Basisgegevens van deze factuur. Deze velden bepalen nummering, data, valuta en koptekst." />
+          <h3 className="text-sm font-semibold">{t(locale, "invoices.form.documentDetails")}</h3>
+          <InlineHint text={t(locale, "invoices.form.documentDetailsHint")} />
         </div>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <div>
-            <label className="mb-1 block text-caption text-muted-foreground">Titel</label>
+            <label className="mb-1 block text-caption text-muted-foreground">{t(locale, "invoices.form.title")}</label>
             <FormInput
               value={invoiceData.title}
               onChange={(e) => dispatch({ type: "UPDATE_FIELD", field: "title", value: e.target.value })}
-              placeholder="FACTUUR"
+              placeholder={t(locale, "invoices.form.titlePlaceholder")}
             />
           </div>
           <div>
-            <label className="mb-1 block text-caption text-muted-foreground">Factuurnummer</label>
+            <label className="mb-1 block text-caption text-muted-foreground">{t(locale, "invoices.form.invoiceNumber")}</label>
             <FormInput
               value={invoiceData.invoiceNumber}
               onChange={(e) => dispatch({ type: "UPDATE_FIELD", field: "invoiceNumber", value: e.target.value })}
             />
           </div>
           <div>
-            <label className="mb-1 block text-caption text-muted-foreground">Factuurdatum</label>
+            <label className="mb-1 block text-caption text-muted-foreground">{t(locale, "invoices.form.issueDate")}</label>
             <FormInput
               type="date"
               value={invoiceData.date}
@@ -348,7 +361,7 @@ export function InvoicePage({
             />
           </div>
           <div>
-            <label className="mb-1 block text-caption text-muted-foreground">Vervaldatum</label>
+            <label className="mb-1 block text-caption text-muted-foreground">{t(locale, "invoices.form.dueDate")}</label>
             <FormInput
               type="date"
               value={invoiceData.dueDate}
@@ -357,7 +370,7 @@ export function InvoicePage({
             />
           </div>
           <div>
-            <label className="mb-1 block text-caption text-muted-foreground">Valuta</label>
+            <label className="mb-1 block text-caption text-muted-foreground">{t(locale, "invoices.form.currency")}</label>
             <FormSelectCurrency
               currencies={currencies}
               value={invoiceData.currency}
@@ -365,7 +378,7 @@ export function InvoicePage({
             />
           </div>
           <div>
-            <label className="mb-1 block text-caption text-muted-foreground">Logo</label>
+            <label className="mb-1 block text-caption text-muted-foreground">{t(locale, "invoices.form.logo")}</label>
             <FormAvatar
               name="businessLogo"
               className="h-[60px] w-[60px]"
@@ -386,24 +399,23 @@ export function InvoicePage({
 
       <section className="rounded-xl border bg-card p-4">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-semibold">Facturatieregime</h3>
-          <InlineHint text="Kies standaardfacturatie of de Belgische auteursrechtenflow. Auteursrechten schakelt PEPPOL uit en toont extra compliancevelden." />
+          <h3 className="text-sm font-semibold">{t(locale, "invoices.form.invoiceRegime")}</h3>
+          <InlineHint text={t(locale, "invoices.form.invoiceRegimeHint")} />
         </div>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <div>
-            <label className="mb-1 block text-caption text-muted-foreground">Type factuur</label>
+            <label className="mb-1 block text-caption text-muted-foreground">{t(locale, "invoices.form.invoiceType")}</label>
             <NativeSelect
               value={invoiceData.invoiceMode}
               onChange={(e) => setInvoiceMode(e.target.value as "standard" | "author_rights")}
-              className="h-10"
             >
-              <option value="standard">Standaard</option>
-              <option value="author_rights">Auteursrechten (België)</option>
+              <option value="standard">{t(locale, "invoices.form.standardInvoice")}</option>
+              <option value="author_rights">{t(locale, "invoices.form.authorRightsInvoice")}</option>
             </NativeSelect>
           </div>
           {isAuthorRightsInvoice && (
             <div>
-              <label className="mb-1 block text-caption text-muted-foreground">Inkomstenjaar regels</label>
+              <label className="mb-1 block text-caption text-muted-foreground">{t(locale, "invoices.form.authorRightsRuleYear")}</label>
               <FormInput
                 type="number"
                 min="2024"
@@ -429,42 +441,42 @@ export function InvoicePage({
                 variant={invoiceData.authorRightsSplitPreset === "creative_70_30" ? "default" : "outline"}
                 onClick={() => applyPreset("creative_70_30")}
               >
-                Creatief werk 70 / 30
+                {t(locale, "invoices.form.authorRightsPresetCreative")}
               </Button>
               <Button
                 type="button"
                 variant={invoiceData.authorRightsSplitPreset === "manual" ? "default" : "outline"}
                 onClick={() => applyPreset("manual")}
               >
-                Manuele split
+                {t(locale, "invoices.form.authorRightsPresetManual")}
               </Button>
             </div>
 
             {!authorRightsRule ? (
               <div className="rounded-md border border-warning/30 bg-warning/15 px-3 py-2 text-sm text-warning">
-                Geen Belgische auteursrechtenregels geconfigureerd voor {invoiceData.authorRightsRuleYear}. Opslaan als draft kan,
-                maar verzenden hoort pas nadat de regels zijn bijgewerkt.
+                {t(locale, "invoices.form.authorRightsMissingRule", { year: invoiceData.authorRightsRuleYear })}
               </div>
             ) : (
               <div className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
-                Geconfigureerde drempel {authorRightsRule.incomeYear}:{" "}
-                {formatCurrency(authorRightsRule.maxAuthorRightsCompensationCents, invoiceData.currency)} bruto auteursrechten.
+                {t(locale, "invoices.form.authorRightsConfiguredThreshold", { year: authorRightsRule.incomeYear })}{" "}
+                {formatCurrency(authorRightsRule.maxAuthorRightsCompensationCents, invoiceData.currency, locale)}{" "}
+                {t(locale, "invoices.form.authorRightsGrossSuffix")}
               </div>
             )}
 
             <div className="grid gap-3 md:grid-cols-2">
               <div>
-                <label className="mb-1 block text-caption text-muted-foreground">Contractreferentie</label>
+                <label className="mb-1 block text-caption text-muted-foreground">{t(locale, "invoices.form.contractReference")}</label>
                 <FormInput
                   value={invoiceData.authorRightsContractReference}
                   onChange={(e) =>
                     dispatch({ type: "UPDATE_FIELD", field: "authorRightsContractReference", value: e.target.value })
                   }
-                  placeholder="RAAM-2026-001"
+                  placeholder={t(locale, "invoices.form.contractReferencePlaceholder")}
                 />
               </div>
               <div>
-                <label className="mb-1 block text-caption text-muted-foreground">Datum overeenkomst</label>
+                <label className="mb-1 block text-caption text-muted-foreground">{t(locale, "invoices.form.agreementDate")}</label>
                 <FormInput
                   type="date"
                   value={invoiceData.authorRightsAgreementDate}
@@ -477,7 +489,7 @@ export function InvoicePage({
 
             <div className="grid gap-3 md:grid-cols-2">
               <div>
-                <label className="mb-1 block text-caption text-muted-foreground">Beroepsvergoeding %</label>
+                <label className="mb-1 block text-caption text-muted-foreground">{t(locale, "invoices.form.professionalShare")}</label>
                 <FormInput
                   type="number"
                   min="0"
@@ -487,7 +499,7 @@ export function InvoicePage({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-caption text-muted-foreground">Auteursrechten %</label>
+                <label className="mb-1 block text-caption text-muted-foreground">{t(locale, "invoices.form.authorRightsShare")}</label>
                 <FormInput
                   type="number"
                   min="0"
@@ -500,7 +512,7 @@ export function InvoicePage({
 
             <div className="grid gap-3 md:grid-cols-3">
               <div>
-                <label className="mb-1 block text-caption text-muted-foreground">Btw beroepsvergoeding %</label>
+                <label className="mb-1 block text-caption text-muted-foreground">{t(locale, "invoices.form.serviceVatRate")}</label>
                 <FormInput
                   type="number"
                   min="0"
@@ -512,7 +524,7 @@ export function InvoicePage({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-caption text-muted-foreground">Btw auteursrechten %</label>
+                <label className="mb-1 block text-caption text-muted-foreground">{t(locale, "invoices.form.rightsVatRate")}</label>
                 <FormInput
                   type="number"
                   min="0"
@@ -528,7 +540,7 @@ export function InvoicePage({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-caption text-muted-foreground">Roerende voorheffing %</label>
+                <label className="mb-1 block text-caption text-muted-foreground">{t(locale, "invoices.form.withholdingRate")}</label>
                 <FormInput
                   type="number"
                   min="0"
@@ -546,14 +558,14 @@ export function InvoicePage({
             </div>
 
             <div>
-              <label className="mb-1 block text-caption text-muted-foreground">Bijzondere voorwaarden</label>
+              <label className="mb-1 block text-caption text-muted-foreground">{t(locale, "invoices.form.specialConditions")}</label>
               <FormTextarea
                 value={invoiceData.authorRightsSpecialConditions}
                 onChange={(e) =>
                   dispatch({ type: "UPDATE_FIELD", field: "authorRightsSpecialConditions", value: e.target.value })
                 }
                 rows={3}
-                placeholder="Deze factuur kadert in de raamovereenkomst dd. 05/04/2026."
+                placeholder={t(locale, "invoices.form.specialConditionsPlaceholder")}
               />
             </div>
 
@@ -571,36 +583,35 @@ export function InvoicePage({
                 className="mt-1 h-4 w-4 rounded border-input"
               />
               <span>
-                Ik bevestig dat deze opdracht in aanmerking komt voor Belgische auteursrechten, dat de toekenning schriftelijk
-                is overeengekomen en dat de vergoeding afzonderlijk wordt vermeld.
+                {t(locale, "invoices.form.authorRightsEligibility")}
               </span>
             </label>
 
             {authorRightsData && (
               <div className="grid gap-2 rounded-md border bg-card p-3 text-sm md:grid-cols-2">
                 <div className="flex justify-between gap-4">
-                  <span className="text-muted-foreground">Beroepsvergoeding</span>
-                  <span>{formatCurrency(authorRightsData.professionalGrossCents, invoiceData.currency)}</span>
+                  <span className="text-muted-foreground">{t(locale, "invoices.form.professionalCompensation")}</span>
+                  <span>{formatCurrency(authorRightsData.professionalGrossCents, invoiceData.currency, locale)}</span>
                 </div>
                 <div className="flex justify-between gap-4">
-                  <span className="text-muted-foreground">Auteursrechten</span>
-                  <span>{formatCurrency(authorRightsData.authorRightsGrossCents, invoiceData.currency)}</span>
+                  <span className="text-muted-foreground">{t(locale, "invoices.form.authorRights")}</span>
+                  <span>{formatCurrency(authorRightsData.authorRightsGrossCents, invoiceData.currency, locale)}</span>
                 </div>
                 <div className="flex justify-between gap-4">
-                  <span className="text-muted-foreground">Btw beroepsvergoeding</span>
-                  <span>{formatCurrency(authorRightsData.serviceVatAmountCents, invoiceData.currency)}</span>
+                  <span className="text-muted-foreground">{t(locale, "invoices.form.serviceVat")}</span>
+                  <span>{formatCurrency(authorRightsData.serviceVatAmountCents, invoiceData.currency, locale)}</span>
                 </div>
                 <div className="flex justify-between gap-4">
-                  <span className="text-muted-foreground">Btw auteursrechten</span>
-                  <span>{formatCurrency(authorRightsData.rightsVatAmountCents, invoiceData.currency)}</span>
+                  <span className="text-muted-foreground">{t(locale, "invoices.form.rightsVat")}</span>
+                  <span>{formatCurrency(authorRightsData.rightsVatAmountCents, invoiceData.currency, locale)}</span>
                 </div>
                 <div className="flex justify-between gap-4">
-                  <span className="text-muted-foreground">Roerende voorheffing</span>
-                  <span>{formatCurrency(authorRightsData.withholdingAmountCents, invoiceData.currency)}</span>
+                  <span className="text-muted-foreground">{t(locale, "invoices.form.withholdingTax")}</span>
+                  <span>{formatCurrency(authorRightsData.withholdingAmountCents, invoiceData.currency, locale)}</span>
                 </div>
                 <div className="flex justify-between gap-4 font-medium">
-                  <span>Netto te betalen</span>
-                  <span>{formatCurrency(authorRightsData.netPayableCents, invoiceData.currency)}</span>
+                  <span>{t(locale, "invoices.form.netPayable")}</span>
+                  <span>{formatCurrency(authorRightsData.netPayableCents, invoiceData.currency, locale)}</span>
                 </div>
               </div>
             )}
@@ -610,8 +621,8 @@ export function InvoicePage({
 
       <section className="rounded-xl border bg-card p-4">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-semibold">Partijen</h3>
-          <InlineHint text="Van en Aan worden standaard automatisch ingevuld. Gebruik het potlood voor een eenmalige manuele aanpassing." />
+          <h3 className="text-sm font-semibold">{t(locale, "invoices.form.parties")}</h3>
+          <InlineHint text={t(locale, "invoices.form.partiesHint")} />
         </div>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <div className="min-w-0">
@@ -623,9 +634,7 @@ export function InvoicePage({
                 size="icon"
                 className="h-7 w-7"
                 onClick={() => setCompanyDetailsAutofill(!isCompanyDetailsAutofill)}
-                aria-label={
-                  isCompanyDetailsAutofill ? "Bedrijfsgegevens handmatig bewerken" : "Automatisch invullen herstellen"
-                }
+                aria-label={isCompanyDetailsAutofill ? t(locale, "invoices.form.editCompanyDetails") : t(locale, "invoices.form.restoreAutofill")}
               >
                 {isCompanyDetailsAutofill ? <PencilLine className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}
               </Button>
@@ -634,7 +643,7 @@ export function InvoicePage({
               value={invoiceData.companyDetails}
               onChange={(e) => dispatch({ type: "UPDATE_FIELD", field: "companyDetails", value: e.target.value })}
               rows={5}
-              placeholder="Je bedrijfsgegevens"
+              placeholder={t(locale, "invoices.form.companyDetailsPlaceholder")}
               disabled={isCompanyDetailsAutofill}
               className={isCompanyDetailsAutofill ? "bg-muted/20 text-muted-foreground" : ""}
               required
@@ -649,7 +658,7 @@ export function InvoicePage({
                 size="icon"
                 className="h-7 w-7"
                 onClick={() => setBillToAutofill(!isBillToAutofill)}
-                aria-label={isBillToAutofill ? "Klantgegevens handmatig bewerken" : "Automatisch invullen herstellen"}
+                aria-label={isBillToAutofill ? t(locale, "invoices.form.editCustomerDetails") : t(locale, "invoices.form.restoreAutofill")}
               >
                 {isBillToAutofill ? <PencilLine className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}
               </Button>
@@ -658,7 +667,7 @@ export function InvoicePage({
               value={invoiceData.billTo}
               onChange={(e) => dispatch({ type: "UPDATE_FIELD", field: "billTo", value: e.target.value })}
               rows={5}
-              placeholder="Klantgegevens"
+              placeholder={t(locale, "invoices.form.customerDetailsPlaceholder")}
               disabled={isBillToAutofill}
               className={isBillToAutofill ? "bg-muted/20 text-muted-foreground" : ""}
               required
@@ -669,8 +678,8 @@ export function InvoicePage({
 
       <section className="rounded-xl border bg-card p-4">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-semibold">Factuurlijnen</h3>
-          <InlineHint text="Voeg hier je artikels of diensten toe. Totaal wordt live herberekend." />
+          <h3 className="text-sm font-semibold">{t(locale, "invoices.form.lineItems")}</h3>
+          <InlineHint text={t(locale, "invoices.form.lineItemsHint")} />
         </div>
         <div className="mt-3 overflow-hidden rounded-lg border">
           <div className="hidden border-b bg-muted/30 text-caption font-medium uppercase tracking-wider text-muted-foreground sm:grid sm:grid-cols-[1fr_64px_92px_88px_28px] sm:px-3 sm:py-2 sm:gap-2">
@@ -690,13 +699,14 @@ export function InvoicePage({
                 onChange={updateItem}
                 onRemove={removeItem}
                 currency={invoiceData.currency}
+                locale={locale}
               />
             ))}
           </div>
 
           <div className="border-t p-3">
-            <Button onClick={addItem} className="w-full sm:w-auto">
-              + Item toevoegen
+            <Button size="sm" onClick={addItem} className="w-full sm:w-auto">
+              {t(locale, "invoices.form.addItem")}
             </Button>
           </div>
         </div>
@@ -712,10 +722,10 @@ export function InvoicePage({
         <div className="grid gap-4 md:grid-cols-2">
           <div className="min-w-0 space-y-3">
             <div>
-              <div className="mb-2 text-caption text-muted-foreground">Btw en toeslagen</div>
+              <div className="mb-2 text-caption text-muted-foreground">{t(locale, "invoices.form.taxesAndFees")}</div>
               {isAuthorRightsInvoice ? (
                 <div className="rounded-md border border-dashed px-3 py-3 text-sm text-muted-foreground">
-                  Btw wordt in auteursrechtenmodus automatisch berekend op basis van de twee vergoedingsdelen hierboven.
+                  {t(locale, "invoices.form.authorRightsTaxAuto")}
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -727,17 +737,18 @@ export function InvoicePage({
                       onChange={updateAdditionalTax}
                       onRemove={removeAdditionalTax}
                       currency={invoiceData.currency}
+                      locale={locale}
                     />
                   ))}
-                  <Button onClick={addAdditionalTax} variant="outline" className="w-full sm:w-auto">
-                    + Btw toevoegen
+                  <Button size="sm" onClick={addAdditionalTax} variant="outline" className="w-full sm:w-auto">
+                    {t(locale, "invoices.form.addTax")}
                   </Button>
                 </div>
               )}
             </div>
 
             <div>
-              <div className="mb-2 text-caption text-muted-foreground">Extra kosten / kortingen</div>
+              <div className="mb-2 text-caption text-muted-foreground">{t(locale, "invoices.form.extraFees")}</div>
               <div className="space-y-2">
                 {invoiceData.additionalFees.map((fee, index) => (
                   <FeeRow
@@ -746,11 +757,11 @@ export function InvoicePage({
                     index={index}
                     onChange={updateAdditionalFee}
                     onRemove={removeAdditionalFee}
-                    currency={invoiceData.currency}
+                    locale={locale}
                   />
                 ))}
-                <Button onClick={addAdditionalFee} variant="outline" className="w-full sm:w-auto">
-                  + Toeslag toevoegen
+                <Button size="sm" onClick={addAdditionalFee} variant="outline" className="w-full sm:w-auto">
+                  {t(locale, "invoices.form.addFee")}
                 </Button>
               </div>
             </div>
@@ -760,25 +771,25 @@ export function InvoicePage({
             <div className="space-y-2 text-sm">
               <div className="flex justify-between gap-2">
                 <span className="text-muted-foreground">{invoiceData.summarySubtotalLabel || "Subtotaal"}</span>
-                <span className="tabular-nums">{formatCurrency(subtotal * 100, invoiceData.currency)}</span>
+                <span className="tabular-nums">{formatCurrency(subtotal * 100, invoiceData.currency, locale)}</span>
               </div>
               {isAuthorRightsInvoice && authorRightsData ? (
                 <>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Beroepsvergoeding</span>
-                    <span>{formatCurrency(authorRightsData.professionalGrossCents, invoiceData.currency)}</span>
+                  <span className="text-muted-foreground">{t(locale, "invoices.form.professionalCompensation")}</span>
+                    <span>{formatCurrency(authorRightsData.professionalGrossCents, invoiceData.currency, locale)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Auteursrechten</span>
-                    <span>{formatCurrency(authorRightsData.authorRightsGrossCents, invoiceData.currency)}</span>
+                  <span className="text-muted-foreground">{t(locale, "invoices.form.authorRights")}</span>
+                    <span>{formatCurrency(authorRightsData.authorRightsGrossCents, invoiceData.currency, locale)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Btw totaal</span>
-                    <span>{formatCurrency(authorRightsData.totalVatAmountCents, invoiceData.currency)}</span>
+                  <span className="text-muted-foreground">{t(locale, "invoices.form.totalVat")}</span>
+                    <span>{formatCurrency(authorRightsData.totalVatAmountCents, invoiceData.currency, locale)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Roerende voorheffing</span>
-                    <span>-{formatCurrency(authorRightsData.withholdingAmountCents, invoiceData.currency)}</span>
+                  <span className="text-muted-foreground">{t(locale, "invoices.form.withholdingTax")}</span>
+                    <span>-{formatCurrency(authorRightsData.withholdingAmountCents, invoiceData.currency, locale)}</span>
                   </div>
                 </>
               ) : (
@@ -787,14 +798,14 @@ export function InvoicePage({
                     <span className="text-muted-foreground">
                       {tax.name} ({tax.rate}%)
                     </span>
-                    <span>{formatCurrency(tax.amount * 100, invoiceData.currency)}</span>
+                    <span>{formatCurrency(tax.amount * 100, invoiceData.currency, locale)}</span>
                   </div>
                 ))
               )}
               {invoiceData.additionalFees.map((fee, index) => (
                 <div key={index} className="flex justify-between">
                   <span className="text-muted-foreground">{fee.name}</span>
-                  <span>{formatCurrency(fee.amount * 100, invoiceData.currency)}</span>
+                  <span>{formatCurrency(fee.amount * 100, invoiceData.currency, locale)}</span>
                 </div>
               ))}
 
@@ -806,13 +817,13 @@ export function InvoicePage({
                   longer offer it as a new choice. */}
 
               <div className="flex justify-between border-t pt-2 text-base font-semibold">
-                <span>{isAuthorRightsInvoice ? "Netto te betalen" : invoiceData.summaryTotalLabel || "Totaal"}</span>
-                <span>{formatCurrency(total * 100, invoiceData.currency)}</span>
+                <span>{isAuthorRightsInvoice ? t(locale, "invoices.form.netPayable") : invoiceData.summaryTotalLabel || t(locale, "invoices.form.total")}</span>
+                <span>{formatCurrency(total * 100, invoiceData.currency, locale)}</span>
               </div>
               {isAuthorRightsInvoice && (
                 <div className="flex justify-between text-caption text-muted-foreground">
-                  <span>Bruto btw</span>
-                  <span>{formatCurrency(Math.round(calculatedTaxTotal * 100), invoiceData.currency)}</span>
+                  <span>{t(locale, "invoices.form.grossVat")}</span>
+                  <span>{formatCurrency(Math.round(calculatedTaxTotal * 100), invoiceData.currency, locale)}</span>
                 </div>
               )}
             </div>
@@ -823,21 +834,21 @@ export function InvoicePage({
       <section className="rounded-xl border bg-card p-4">
         <div className="grid gap-3 md:grid-cols-2">
           <div>
-            <label className="mb-1 block text-caption text-muted-foreground">Notities / voorwaarden</label>
+            <label className="mb-1 block text-caption text-muted-foreground">{t(locale, "invoices.form.notes")}</label>
             <FormTextarea
               value={invoiceData.notes}
               onChange={(e) => dispatch({ type: "UPDATE_FIELD", field: "notes", value: e.target.value })}
               rows={4}
-              placeholder="Additional notes or terms"
+              placeholder={t(locale, "invoices.form.notesPlaceholder")}
             />
           </div>
           <div>
-            <label className="mb-1 block text-caption text-muted-foreground">Betaalgegevens</label>
+            <label className="mb-1 block text-caption text-muted-foreground">{t(locale, "invoices.form.bankDetails")}</label>
             <FormTextarea
               value={invoiceData.bankDetails}
               onChange={(e) => dispatch({ type: "UPDATE_FIELD", field: "bankDetails", value: e.target.value })}
               rows={4}
-              placeholder="IBAN, BIC, referentie, ..."
+              placeholder={t(locale, "invoices.form.bankDetailsPlaceholder")}
               required
             />
           </div>

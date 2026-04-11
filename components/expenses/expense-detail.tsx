@@ -376,6 +376,23 @@ export function ExpenseDetail({
           </div>
         )}
 
+        {isDirty && (
+          <div className="sticky top-4 z-10 rounded-card border bg-card/95 p-3 shadow-popover backdrop-blur">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="text-sm text-muted-foreground">{t(locale, "expenses.dirtyState")}</div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={revertChanges} disabled={!isDirty || isPending}>
+                  {t(locale, "expenses.revertChanges")}
+                </Button>
+                <Button onClick={handleSave} disabled={!isDirty || isPending}>
+                  {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  {t(locale, "expenses.saveChanges")}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <section className="rounded-card border bg-card p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="font-semibold">{t(locale, "expenses.detailsTitle")}</h2>

@@ -1,4 +1,6 @@
 import { isAuthorRightsMode } from "@/lib/author-rights"
+import { t } from "@/lib/i18n"
+import { DEFAULT_UI_LOCALE, type UiLocale } from "@/lib/locale"
 import { buildAuthorRightsData, getInvoiceTaxAmount, getInvoiceTotalAmount } from "@/lib/invoice-totals"
 import { InvoiceFormData } from "@/lib/invoice-pdf/types"
 import { formatCurrency } from "@/lib/utils"
@@ -10,9 +12,10 @@ function isPresent(val: string | null | undefined): boolean {
 type InvoicePreviewProps = {
   templateData: InvoiceFormData
   className?: string
+  locale?: UiLocale
 }
 
-export function InvoicePreview({ templateData: d, className }: InvoicePreviewProps) {
+export function InvoicePreview({ templateData: d, className, locale = DEFAULT_UI_LOCALE }: InvoicePreviewProps) {
   const subtotal = d.items.reduce((s, i) => s + i.subtotal, 0)
   const taxTotal = getInvoiceTaxAmount(d)
   const total = getInvoiceTotalAmount(d)
@@ -20,7 +23,7 @@ export function InvoicePreview({ templateData: d, className }: InvoicePreviewPro
   const authorRightsData = buildAuthorRightsData(d)
 
   return (
-    <div className={`bg-card text-body font-sans p-8 ${className ?? ""}`}>
+    <div className={`bg-card text-body font-sans p-8 [zoom:0.65] ${className ?? ""}`}>
       {/* Header */}
       <div className="flex justify-between items-start mb-8">
         <div>
@@ -34,10 +37,10 @@ export function InvoicePreview({ templateData: d, className }: InvoicePreviewPro
         </div>
         <div className="text-right">
           <div className="font-heading text-xl font-semibold tracking-[-0.02em] text-foreground">
-            {d.title || "Factuur"}
+            {d.title || t(locale, "invoices.preview.invoiceTitle")}
           </div>
           <div className="mt-1 text-caption text-muted-foreground">
-            Factuurnummer: <span className="font-mono">{d.invoiceNumber || "\u2014"}</span>
+            {t(locale, "invoices.preview.invoiceNumber")}: <span className="font-mono">{d.invoiceNumber || "\u2014"}</span>
           </div>
         </div>
       </div>
@@ -45,16 +48,16 @@ export function InvoicePreview({ templateData: d, className }: InvoicePreviewPro
       {/* Bill to + dates */}
       <div className="flex justify-between mb-8">
         <div>
-          <div className="text-caption font-semibold text-muted-foreground uppercase mb-1">{d.billToLabel || "Aan"}</div>
+          <div className="text-caption font-semibold text-muted-foreground uppercase mb-1">{d.billToLabel || t(locale, "invoices.preview.billTo")}</div>
           <div className="text-caption whitespace-pre-line">{isPresent(d.billTo) ? d.billTo : "\u2014"}</div>
         </div>
         <div className="text-right text-caption space-y-1">
           <div>
-            <span className="text-muted-foreground">{d.issueDateLabel || "Datum"}: </span>
+            <span className="text-muted-foreground">{d.issueDateLabel || t(locale, "invoices.preview.date")}: </span>
             <span>{d.date}</span>
           </div>
           <div>
-            <span className="text-muted-foreground">{d.dueDateLabel || "Vervaldatum"}: </span>
+            <span className="text-muted-foreground">{d.dueDateLabel || t(locale, "invoices.preview.dueDate")}: </span>
             <span>{d.dueDate}</span>
           </div>
         </div>
@@ -64,10 +67,10 @@ export function InvoicePreview({ templateData: d, className }: InvoicePreviewPro
       <table className="w-full text-caption mb-4">
         <thead>
           <tr className="border-b border-border text-muted-foreground uppercase">
-            <th className="text-left pb-2">{d.itemLabel || "Omschrijving"}</th>
-            <th className="text-right pb-2 w-16">{d.quantityLabel || "Aantal"}</th>
-            <th className="text-right pb-2 w-24">{d.unitPriceLabel || "Eenheidsprijs"}</th>
-            <th className="text-right pb-2 w-24">{d.subtotalLabel || "Subtotaal"}</th>
+            <th className="text-left pb-2">{d.itemLabel || t(locale, "invoices.preview.description")}</th>
+            <th className="text-right pb-2 w-16">{d.quantityLabel || t(locale, "invoices.preview.quantity")}</th>
+            <th className="text-right pb-2 w-24">{d.unitPriceLabel || t(locale, "invoices.preview.unitPrice")}</th>
+            <th className="text-right pb-2 w-24">{d.subtotalLabel || t(locale, "invoices.preview.subtotal")}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
@@ -80,8 +83,8 @@ export function InvoicePreview({ templateData: d, className }: InvoicePreviewPro
                 )}
               </td>
               <td className="text-right py-2">{item.quantity}</td>
-              <td className="text-right py-2">{formatCurrency(item.unitPrice * 100, d.currency)}</td>
-              <td className="text-right py-2">{formatCurrency(item.subtotal * 100, d.currency)}</td>
+              <td className="text-right py-2">{formatCurrency(item.unitPrice * 100, d.currency, locale)}</td>
+              <td className="text-right py-2">{formatCurrency(item.subtotal * 100, d.currency, locale)}</td>
             </tr>
           ))}
         </tbody>
@@ -91,50 +94,50 @@ export function InvoicePreview({ templateData: d, className }: InvoicePreviewPro
       <div className="flex justify-end">
         <div className="w-48 space-y-1 text-caption">
           <div className="flex justify-between text-muted-foreground">
-            <span>{d.summarySubtotalLabel || "Subtotaal"}</span>
-            <span>{formatCurrency(subtotal * 100, d.currency)}</span>
+            <span>{d.summarySubtotalLabel || t(locale, "invoices.preview.subtotal")}</span>
+            <span>{formatCurrency(subtotal * 100, d.currency, locale)}</span>
           </div>
           {isAuthorRightsInvoice && authorRightsData ? (
             <>
               <div className="flex justify-between text-muted-foreground">
-                <span>Beroepsvergoeding</span>
-                <span>{formatCurrency(authorRightsData.professionalGrossCents, d.currency)}</span>
+                <span>{t(locale, "invoices.preview.professionalCompensation")}</span>
+                <span>{formatCurrency(authorRightsData.professionalGrossCents, d.currency, locale)}</span>
               </div>
               <div className="flex justify-between text-muted-foreground">
-                <span>Auteursrechten</span>
-                <span>{formatCurrency(authorRightsData.authorRightsGrossCents, d.currency)}</span>
+                <span>{t(locale, "invoices.preview.authorRights")}</span>
+                <span>{formatCurrency(authorRightsData.authorRightsGrossCents, d.currency, locale)}</span>
               </div>
               <div className="flex justify-between text-muted-foreground">
-                <span>Btw totaal</span>
-                <span>{formatCurrency(authorRightsData.totalVatAmountCents, d.currency)}</span>
+                <span>{t(locale, "invoices.preview.totalVat")}</span>
+                <span>{formatCurrency(authorRightsData.totalVatAmountCents, d.currency, locale)}</span>
               </div>
               <div className="flex justify-between text-muted-foreground">
-                <span>Roerende voorheffing</span>
-                <span>-{formatCurrency(authorRightsData.withholdingAmountCents, d.currency)}</span>
+                <span>{t(locale, "invoices.preview.withholdingTax")}</span>
+                <span>-{formatCurrency(authorRightsData.withholdingAmountCents, d.currency, locale)}</span>
               </div>
             </>
           ) : (
             d.additionalTaxes.map((tax, i) => (
               <div key={i} className="flex justify-between text-muted-foreground">
                 <span>{tax.name} ({tax.rate}%)</span>
-                <span>{formatCurrency(tax.amount * 100, d.currency)}</span>
+                <span>{formatCurrency(tax.amount * 100, d.currency, locale)}</span>
               </div>
             ))
           )}
           {d.additionalFees.map((fee, i) => (
             <div key={i} className="flex justify-between text-muted-foreground">
               <span>{fee.name}</span>
-              <span>{formatCurrency(fee.amount * 100, d.currency)}</span>
+              <span>{formatCurrency(fee.amount * 100, d.currency, locale)}</span>
             </div>
           ))}
           <div className="flex justify-between font-bold border-t pt-1">
-            <span>{isAuthorRightsInvoice ? "Netto te betalen" : d.summaryTotalLabel || "Totaal"}</span>
-            <span>{formatCurrency(total * 100, d.currency)}</span>
+            <span>{isAuthorRightsInvoice ? t(locale, "invoices.preview.netPayable") : d.summaryTotalLabel || t(locale, "invoices.preview.total")}</span>
+            <span>{formatCurrency(total * 100, d.currency, locale)}</span>
           </div>
           {isAuthorRightsInvoice && (
             <div className="flex justify-between text-muted-foreground">
-              <span>Btw bruto</span>
-              <span>{formatCurrency(Math.round(taxTotal * 100), d.currency)}</span>
+              <span>{t(locale, "invoices.preview.grossVat")}</span>
+              <span>{formatCurrency(Math.round(taxTotal * 100), d.currency, locale)}</span>
             </div>
           )}
         </div>
@@ -142,13 +145,13 @@ export function InvoicePreview({ templateData: d, className }: InvoicePreviewPro
 
       {isAuthorRightsInvoice && authorRightsData && (
         <div className="mt-6 rounded-md border border-warning/30 bg-warning/10 p-4 text-caption text-muted-foreground">
-          <div className="font-semibold text-foreground">Auteursrechten</div>
+          <div className="font-semibold text-foreground">{t(locale, "invoices.preview.authorRightsSection")}</div>
           <div className="mt-2 flex justify-between gap-4">
-            <span>Contractreferentie</span>
+            <span>{t(locale, "invoices.preview.contractReference")}</span>
             <span>{d.authorRightsContractReference || "\u2014"}</span>
           </div>
           <div className="mt-1 flex justify-between gap-4">
-            <span>Datum overeenkomst</span>
+            <span>{t(locale, "invoices.preview.agreementDate")}</span>
             <span>{d.authorRightsAgreementDate || "\u2014"}</span>
           </div>
           {isPresent(d.authorRightsSpecialConditions) && (

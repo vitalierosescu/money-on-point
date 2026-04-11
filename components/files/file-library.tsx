@@ -5,6 +5,8 @@ import { FormError } from "@/components/forms/error"
 import { Button } from "@/components/ui/button"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Input } from "@/components/ui/input"
+import { t } from "@/lib/i18n"
+import type { UiLocale } from "@/lib/locale"
 import type { FileLibraryItem } from "@/models/files"
 import { CheckCircle2, Download, ExternalLink, FileText, Search } from "lucide-react"
 import Link from "next/link"
@@ -23,11 +25,23 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${sizes[index]}`
 }
 
-function statusLabel(file: FileLibraryItem): string {
-  return file.isReviewed ? "Reviewed" : "Unsorted"
+function getReviewStateLabel(file: FileLibraryItem, locale: UiLocale): string {
+  return file.isReviewed ? t(locale, "files.stateReviewed") : t(locale, "files.stateUnsorted")
 }
 
-export function FileLibrary({ files }: { files: FileLibraryItem[] }) {
+function getLinkStateLabel(file: FileLibraryItem, locale: UiLocale): string {
+  return file.relatedRecords.length > 0 ? t(locale, "files.stateLinked") : t(locale, "files.stateNeedsLink")
+}
+
+function getReviewBadgeClass(file: FileLibraryItem) {
+  return file.isReviewed ? "bg-success/15 text-success" : "bg-info/12 text-info"
+}
+
+function getLinkBadgeClass(file: FileLibraryItem) {
+  return file.relatedRecords.length > 0 ? "bg-secondary text-foreground" : "bg-warning/15 text-warning"
+}
+
+export function FileLibrary({ files, locale }: { files: FileLibraryItem[]; locale: UiLocale }) {
   const [query, setQuery] = useState("")
   const [selectedId, setSelectedId] = useState(files[0]?.id ?? "")
   const [error, setError] = useState("")
@@ -46,11 +60,12 @@ export function FileLibrary({ files }: { files: FileLibraryItem[] }) {
       return (
         file.filename.toLowerCase().includes(normalized) ||
         file.mimetype.toLowerCase().includes(normalized) ||
-        statusLabel(file).toLowerCase().includes(normalized) ||
+        getReviewStateLabel(file, locale).toLowerCase().includes(normalized) ||
+        getLinkStateLabel(file, locale).toLowerCase().includes(normalized) ||
         relatedText.includes(normalized)
       )
     })
-  }, [files, query])
+  }, [files, locale, query])
 
   const selectedFile = filteredFiles.find((file) => file.id === selectedId) ?? filteredFiles[0] ?? null
 
@@ -59,7 +74,7 @@ export function FileLibrary({ files }: { files: FileLibraryItem[] }) {
     startTransition(async () => {
       const result = await setFileReviewedAction(file.id, !file.isReviewed)
       if (!result.success) {
-        setError(result.error ?? "Could not update file state")
+        setError(result.error ?? t(locale, "files.updateStateFailed"))
       }
     })
   }
@@ -68,8 +83,8 @@ export function FileLibrary({ files }: { files: FileLibraryItem[] }) {
     return (
       <EmptyState
         icon={<FileText className="h-8 w-8" />}
-        title="No documents yet."
-        description="Upload a receipt or invoice to start building your library."
+        title={t(locale, "files.emptyTitle")}
+        description={t(locale, "files.emptyDescription")}
       />
     )
   }
@@ -83,7 +98,7 @@ export function FileLibrary({ files }: { files: FileLibraryItem[] }) {
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search documents, types, or linked records..."
+              placeholder={t(locale, "files.searchPlaceholder")}
               className="pl-9"
             />
           </div>
@@ -93,8 +108,8 @@ export function FileLibrary({ files }: { files: FileLibraryItem[] }) {
           {filteredFiles.length === 0 ? (
             <div className="p-8">
               <EmptyState
-                title="No documents match this search."
-                description="Try a different keyword or reset the filter."
+                title={t(locale, "files.noResultsTitle")}
+                description={t(locale, "files.noResultsDescription")}
                 className="border-none bg-transparent p-0"
               />
             </div>
@@ -121,20 +136,19 @@ export function FileLibrary({ files }: { files: FileLibraryItem[] }) {
                         </div>
                         {file.relatedRecords[0] && (
                           <div className="mt-2 text-xs text-muted-foreground">
-                            Linked to {file.relatedRecords[0].title}
+                            {t(locale, "files.linkedTo", { title: file.relatedRecords[0].title })}
                             {file.relatedRecords.length > 1 ? ` +${file.relatedRecords.length - 1}` : ""}
                           </div>
                         )}
                       </div>
-                      <span
-                        className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
-                          file.isReviewed
-                            ? "bg-emerald-50 text-emerald-700"
-                            : "bg-blue-50 text-blue-700"
-                        }`}
-                      >
-                        {statusLabel(file)}
-                      </span>
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getReviewBadgeClass(file)}`}>
+                          {getReviewStateLabel(file, locale)}
+                        </span>
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getLinkBadgeClass(file)}`}>
+                          {getLinkStateLabel(file, locale)}
+                        </span>
+                      </div>
                     </div>
                   </button>
                 )
@@ -164,7 +178,7 @@ export function FileLibrary({ files }: { files: FileLibraryItem[] }) {
                   onClick={() => handleToggleReviewed(selectedFile)}
                 >
                   <CheckCircle2 className="h-4 w-4" />
-                  {selectedFile.isReviewed ? "Mark as Unsorted" : "Mark as Reviewed"}
+                  {selectedFile.isReviewed ? t(locale, "files.markAsUnsorted") : t(locale, "files.markAsReviewed")}
                 </Button>
                 <Button variant="outline" size="sm" asChild>
                   <a href={`/files/download/${selectedFile.id}`}>
@@ -185,25 +199,31 @@ export function FileLibrary({ files }: { files: FileLibraryItem[] }) {
               <div className="space-y-4">
                 <div>
                   <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Document State
+                    {t(locale, "files.reviewState")}
                   </div>
-                  <div
-                    className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
-                      selectedFile.isReviewed
-                        ? "bg-emerald-50 text-emerald-700"
-                        : "bg-blue-50 text-blue-700"
-                    }`}
-                  >
-                    {statusLabel(selectedFile)}
+                  <div className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getReviewBadgeClass(selectedFile)}`}>
+                    {getReviewStateLabel(selectedFile, locale)}
                   </div>
                 </div>
 
                 <div>
                   <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Related Records
+                    {t(locale, "files.linksState")}
+                  </div>
+                  <div className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${getLinkBadgeClass(selectedFile)}`}>
+                    {getLinkStateLabel(selectedFile, locale)}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    {t(locale, "files.linkedRecordsTitle")}
                   </div>
                   {selectedFile.relatedRecords.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No invoice or expense is linked to this document yet.</p>
+                    <div className="space-y-2 rounded-card border border-warning/30 bg-warning/5 p-3">
+                      <p className="text-sm font-medium text-foreground">{t(locale, "files.needsLinkTitle")}</p>
+                      <p className="text-sm text-muted-foreground">{t(locale, "files.needsLinkDescription")}</p>
+                    </div>
                   ) : (
                     <div className="space-y-2">
                       {selectedFile.relatedRecords.map((record) => (
@@ -234,8 +254,8 @@ export function FileLibrary({ files }: { files: FileLibraryItem[] }) {
         ) : (
           <div className="p-8">
             <EmptyState
-              title="Select a document to preview it."
-              description="Choose a file from the list on the left."
+              title={t(locale, "files.selectToPreview")}
+              description={t(locale, "files.selectToPreviewDescription")}
               className="border-none bg-transparent p-0"
             />
           </div>

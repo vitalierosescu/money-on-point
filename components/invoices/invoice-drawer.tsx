@@ -34,14 +34,17 @@ import {
   downloadInvoicePDFAction,
   duplicateInvoiceAction,
 } from "@/app/(app)/invoices/actions"
+import { t } from "@/lib/i18n"
+import { formatLocaleCurrency, formatLocaleDate, type UiLocale } from "@/lib/locale"
 
 type InvoiceDrawerProps = {
   invoice: InvoiceWithCustomer
+  locale: UiLocale
   open: boolean
   onClose: () => void
 }
 
-export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
+export function InvoiceDrawer({ invoice, locale, open, onClose }: InvoiceDrawerProps) {
   const [isPending, startTransition] = useTransition()
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
@@ -87,7 +90,7 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
 
   async function handleDownloadPDF() {
     if (!templateData) {
-      toast.error("Open en sla de factuur eerst op")
+      toast.error(t(locale, "invoices.drawerPreviewUnavailable"))
       return
     }
     startTransition(async () => {
@@ -102,7 +105,7 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
         a.click()
         URL.revokeObjectURL(url)
       } catch {
-        toast.error("PDF downloaden mislukt")
+        toast.error(t(locale, "invoices.drawerDownloadPdf"))
       }
     })
   }
@@ -134,7 +137,7 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
                   <InvoicePreview templateData={templateData} />
                 ) : (
                   <div className="flex items-center justify-center h-full text-muted-foreground p-8">
-                    <p>No preview available</p>
+                    <p>{t(locale, "invoices.drawerPreviewUnavailable")}</p>
                   </div>
                 )}
               </div>
@@ -142,7 +145,7 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
                 <Link href={`/invoices/${invoice.id}`} onClick={onClose}>
                   <Button variant="outline" className="w-full">
                     <ExternalLink className="mr-2 h-4 w-4" />
-                    Open full page
+                    {t(locale, "invoices.drawerOpenFullPage")}
                   </Button>
                 </Link>
               </div>
@@ -154,15 +157,15 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
                 {(
                   [
                     [
-                      "Date",
+                      t(locale, "invoices.drawerDate"),
                       invoice.issuedAt
-                        ? new Date(invoice.issuedAt).toLocaleDateString("nl-BE")
+                        ? formatLocaleDate(invoice.issuedAt, locale)
                         : "—",
                     ],
                     [
-                      "Due date",
+                      t(locale, "invoices.drawerDueDate"),
                       invoice.dueDate
-                        ? new Date(invoice.dueDate).toLocaleDateString("nl-BE")
+                        ? formatLocaleDate(invoice.dueDate, locale)
                         : "—",
                     ],
                   ] as [string, string][]
@@ -173,25 +176,25 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
                   </div>
                 ))}
                 <div className="flex justify-between py-1 border-b font-semibold">
-                  <span>Total</span>
+                  <span>{t(locale, "invoices.drawerTotal")}</span>
                   <span>
-                    {invoice.currency} {(invoice.total / 100).toFixed(2)}
+                    {formatLocaleCurrency(invoice.total, invoice.currency, locale)}
                   </span>
                 </div>
                 {invoice.paidAmount > 0 && (
                   <div className="flex justify-between py-1 border-b text-success">
-                    <span>Paid</span>
+                    <span>{t(locale, "invoices.drawerPaid")}</span>
                     <span>
-                      {invoice.currency} {(invoice.paidAmount / 100).toFixed(2)}
+                      {formatLocaleCurrency(invoice.paidAmount, invoice.currency, locale)}
                     </span>
                   </div>
                 )}
                 <div className="flex justify-between py-1 border-b">
-                  <span className="text-muted-foreground">Delivery</span>
+                  <span className="text-muted-foreground">{t(locale, "invoices.drawerDelivery")}</span>
                   <span>{getInvoiceDeliveryMethodLabel(deliveryMethod)}</span>
                 </div>
                 <div className="flex justify-between py-1 border-b">
-                  <span className="text-muted-foreground">Delivery status</span>
+                  <span className="text-muted-foreground">{t(locale, "invoices.drawerDeliveryStatus")}</span>
                   <span>{getInvoiceDeliveryStatusLabel(deliveryStatus)}</span>
                 </div>
                 {invoice.providerError && (
@@ -216,7 +219,7 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
                     trigger={
                       <Button variant="default" className="w-full" disabled={isPending}>
                         <Send className="mr-2 h-4 w-4" />
-                        Verzenden
+                        {t(locale, "invoices.drawerSend")}
                       </Button>
                     }
                   />
@@ -225,7 +228,7 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
                   <Link href={`/invoices/${invoice.id}`} onClick={onClose}>
                     <Button variant="default" className="w-full" disabled={isPending}>
                       <Send className="mr-2 h-4 w-4" />
-                      Open PEPPOL actions
+                      {t(locale, "invoices.drawerOpenPeppol")}
                     </Button>
                   </Link>
                 )}
@@ -238,7 +241,7 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
                     onClick={() => run(() => markInvoicePaidAction(invoice.id, new Date()))}
                   >
                     <CheckCircle className="mr-2 h-4 w-4" />
-                    Mark as paid
+                    {t(locale, "invoices.drawerMarkPaid")}
                   </Button>
                 )}
 
@@ -250,7 +253,7 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
                     trigger={
                       <Button variant="outline" className="w-full" disabled={isPending}>
                         <CheckCircle className="mr-2 h-4 w-4" />
-                        Betaling registreren
+                        {t(locale, "invoices.drawerRecordPayment")}
                       </Button>
                     }
                   />
@@ -260,7 +263,7 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
                   <Link href={`/invoices/${invoice.id}/edit`} onClick={onClose}>
                     <Button variant="outline" className="w-full" disabled={isPending}>
                       <Pencil className="mr-2 h-4 w-4" />
-                      Edit
+                      {t(locale, "invoices.drawerEdit")}
                     </Button>
                   </Link>
                 )}
@@ -273,7 +276,7 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
                     onClick={handleDownloadPDF}
                   >
                     <Download className="mr-2 h-4 w-4" />
-                    Download PDF
+                    {t(locale, "invoices.drawerDownloadPdf")}
                   </Button>
                 )}
 
@@ -281,7 +284,9 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
                   <Link href={`/invoices/${invoice.id}#documents`} onClick={onClose}>
                     <Button variant="outline" className="w-full" disabled={isPending}>
                       <Paperclip className="mr-2 h-4 w-4" />
-                      {attachedFiles.length} {attachedFiles.length === 1 ? "document" : "documents"}
+                      {attachedFiles.length === 1
+                        ? t(locale, "invoices.drawerLinkedDocumentsOne", { count: attachedFiles.length })
+                        : t(locale, "invoices.drawerLinkedDocumentsMany", { count: attachedFiles.length })}
                     </Button>
                   </Link>
                 )}
@@ -294,7 +299,7 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
                     onClick={() => run(() => duplicateInvoiceAction(invoice.id))}
                   >
                     <Copy className="mr-2 h-4 w-4" />
-                    Dupliceren
+                    {t(locale, "invoices.drawerDuplicate")}
                   </Button>
                 )}
 
@@ -306,7 +311,7 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
                     onClick={() => run(() => cancelInvoiceAction(invoice.id))}
                   >
                     <XCircle className="mr-2 h-4 w-4" />
-                    Cancel
+                    {t(locale, "invoices.drawerCancel")}
                   </Button>
                 )}
 
@@ -318,7 +323,7 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
                     onClick={() => setShowDeleteConfirm(true)}
                   >
                     <Trash2 className="mr-2 h-4 w-4" />
-                    Delete
+                    {t(locale, "invoices.drawerDelete")}
                   </Button>
                 )}
               </div>
@@ -331,15 +336,14 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
         <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Delete invoice?</DialogTitle>
+              <DialogTitle>{t(locale, "invoices.drawerDeleteTitle")}</DialogTitle>
               <DialogDescription>
-                This will permanently delete invoice {invoice.invoiceNumber}. This action cannot be
-                undone.
+                {t(locale, "invoices.drawerDeleteDescription", { invoiceNumber: invoice.invoiceNumber })}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <Button variant="outline" disabled={isPending} onClick={() => setShowDeleteConfirm(false)}>
-                Cancel
+                {t(locale, "common.cancel")}
               </Button>
               <Button
                 variant="destructive"
@@ -349,7 +353,7 @@ export function InvoiceDrawer({ invoice, open, onClose }: InvoiceDrawerProps) {
                   run(() => deleteInvoiceAction(invoice.id))
                 }}
               >
-                Delete
+                {t(locale, "common.delete")}
               </Button>
             </DialogFooter>
           </DialogContent>

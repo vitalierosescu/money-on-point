@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 type MerchantAutocompleteProps = {
-  title?: string
+  title?: React.ReactNode
   name?: string
   value: string
   onChange: (value: string) => void

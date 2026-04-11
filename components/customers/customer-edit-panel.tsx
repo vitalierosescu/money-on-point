@@ -103,7 +103,7 @@ export function CustomerEditPanel({ customer, trigger, onSuccess }: CustomerEdit
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>{trigger}</SheetTrigger>
-      <SheetContent className="overflow-y-auto sm:max-w-lg">
+      <SheetContent className="overflow-y-auto sm:max-w-2xl">
         <SheetHeader>
           <SheetTitle>{customer ? "Edit Customer" : "Add Customer"}</SheetTitle>
         </SheetHeader>

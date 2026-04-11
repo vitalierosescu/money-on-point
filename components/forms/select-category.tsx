@@ -14,7 +14,7 @@ export const FormSelectCategory = ({
   isRequired = false,
   ...props
 }: {
-  title: string
+  title: React.ReactNode
   categories: Category[]
   emptyValue?: string
   placeholder?: string

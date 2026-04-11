@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { CheckCircle2, Mail, Network, RefreshCcw, Send } from "lucide-react"
+import { CheckCircle2, Mail, Network, RefreshCcw, RotateCcw, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PaymentDialog } from "@/components/invoices/payment-dialog"
 import { SendInvoiceDialog } from "@/components/invoices/send-invoice-dialog"
@@ -10,6 +10,7 @@ import {
   cancelInvoiceAction,
   deleteInvoiceAction,
   markInvoicePaidAction,
+  revertInvoiceToDraftAction,
   sendInvoicePeppolAction,
   setInvoiceDeliveryMethodAction,
   verifyInvoicePeppolRecipientAction,
@@ -265,6 +266,19 @@ export function InvoiceActions({
             onClick={() => run(() => markInvoicePaidAction(invoice.id, new Date()))}
           >
             Mark as Fully Paid
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full"
+            disabled={isLoading}
+            onClick={async () => {
+              if (!confirm("Revert this invoice to draft? This will allow you to edit and re-save it.")) return
+              const ok = await run(() => revertInvoiceToDraftAction(invoice.id))
+              if (ok) router.push(`/invoices/${invoice.id}/edit?wasSent=1`)
+            }}
+          >
+            <RotateCcw className="mr-2 h-4 w-4" />
+            Revert to Draft &amp; Edit
           </Button>
           <Button
             variant="outline"

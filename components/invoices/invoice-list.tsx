@@ -1,19 +1,23 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect, useTransition } from "react"
 import Link from "next/link"
 import { CustomerAvatar } from "@/components/customers/customer-avatar"
 import { InvoiceStatusBadge } from "@/components/invoices/invoice-status-badge"
 import { InvoiceDrawer } from "@/components/invoices/invoice-drawer"
+import { updateTableColumnOrderAction, updateTableColumnWidthsAction } from "@/app/(app)/settings/actions"
+import { ColumnOrderList } from "@/components/ui/column-order-list"
 import {
   getInvoiceDeliveryMethod,
   getInvoiceDeliveryMethodLabel,
   getInvoiceDeliveryReadiness,
 } from "@/lib/invoice-delivery"
 import { InvoiceWithCustomer } from "@/models/invoices"
-import { Plus, Search } from "lucide-react"
+import { ArrowDown, ArrowUp, ChevronsUpDown, Plus, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { ResizableTableHead } from "@/components/ui/resizable-table-head"
 import {
   Select,
   SelectContent,
@@ -22,11 +26,21 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { StatCard, type StatCardTone } from "@/components/ui/stat-card"
+import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table"
 import { t } from "@/lib/i18n"
 import { DEFAULT_UI_LOCALE, getIntlLocale, type UiLocale } from "@/lib/locale"
+import {
+  clampColumnWidth,
+  normalizeColumnOrder,
+  normalizeColumnWidths,
+  reconcileColumnOrder,
+  reconcileColumnWidths,
+} from "@/lib/table-column-order"
 
 type InvoiceListProps = {
   invoices: InvoiceWithCustomer[]
+  initialColumnOrder?: string
+  initialColumnWidths?: string
   locale?: UiLocale
   hasRecommandCredentials?: boolean
   recommandEnvironmentLabel?: string
@@ -35,6 +49,19 @@ type InvoiceListProps = {
 
 type TabStatus = "all" | "draft" | "sent" | "overdue" | "paid"
 type DeliveryFilter = "all" | "ready_to_send" | "peppol_ready" | "email_ready" | "blocked"
+type SortColumn = "invoiceNumber" | "status" | "dueDate" | "customer" | "amount" | "issuedAt"
+type SortDirection = "asc" | "desc"
+type InvoiceColumnId = "invoiceNumber" | "status" | "dueDate" | "customer" | "delivery" | "amount" | "issuedAt"
+
+const DEFAULT_COLUMN_ORDER: InvoiceColumnId[] = [
+  "invoiceNumber",
+  "status",
+  "dueDate",
+  "customer",
+  "delivery",
+  "amount",
+  "issuedAt",
+]
 
 const TAB_KEYS: Record<TabStatus, string> = {
   all: "invoices.tabsAll",
@@ -123,6 +150,8 @@ function DueDateCell({
 
 export function InvoiceList({
   invoices,
+  initialColumnOrder,
+  initialColumnWidths,
   locale = DEFAULT_UI_LOCALE,
   hasRecommandCredentials,
   recommandEnvironmentLabel,
@@ -133,6 +162,27 @@ export function InvoiceList({
   const [selectedCustomer, setSelectedCustomer] = useState<string>("all")
   const [deliveryFilter, setDeliveryFilter] = useState<DeliveryFilter>("all")
   const [openInvoice, setOpenInvoice] = useState<InvoiceWithCustomer | null>(null)
+  const [sortColumn, setSortColumn] = useState<SortColumn>("invoiceNumber")
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc")
+  const [columnOrder, setColumnOrder] = useState<InvoiceColumnId[]>(() =>
+    normalizeColumnOrder(DEFAULT_COLUMN_ORDER, initialColumnOrder) as InvoiceColumnId[]
+  )
+  const defaultColumnWidths = useMemo<Record<InvoiceColumnId, number>>(
+    () => ({
+      invoiceNumber: 160,
+      status: 140,
+      dueDate: 170,
+      customer: 260,
+      delivery: 220,
+      amount: 160,
+      issuedAt: 160,
+    }),
+    []
+  )
+  const [columnWidths, setColumnWidths] = useState<Record<InvoiceColumnId, number>>(
+    () => normalizeColumnWidths(defaultColumnWidths, initialColumnWidths) as Record<InvoiceColumnId, number>
+  )
+  const [, startTransition] = useTransition()
   const amountFormatter = useMemo(
     () =>
       new Intl.NumberFormat(getIntlLocale(locale), {
@@ -141,6 +191,14 @@ export function InvoiceList({
       }),
     [locale]
   )
+
+  useEffect(() => {
+    setColumnOrder((prev) => reconcileColumnOrder(DEFAULT_COLUMN_ORDER, prev) as InvoiceColumnId[])
+  }, [])
+
+  useEffect(() => {
+    setColumnWidths((prev) => reconcileColumnWidths(defaultColumnWidths, prev) as Record<InvoiceColumnId, number>)
+  }, [defaultColumnWidths])
 
   const customerNames = useMemo(() => {
     const names = new Set<string>()
@@ -219,6 +277,128 @@ export function InvoiceList({
     recommandEnvironmentLabel,
     sellerCountryCode,
   ])
+
+  const sorted = useMemo(() => {
+    const dir = sortDirection === "asc" ? 1 : -1
+    return [...filtered].sort((a, b) => {
+      switch (sortColumn) {
+        case "invoiceNumber": {
+          const parseInvoiceNum = (s: string) => {
+            const m = s.match(/^(\d+)[^\d](\d+)$/)
+            return m ? [parseInt(m[1], 10), parseInt(m[2], 10)] : null
+          }
+          const pa = parseInvoiceNum(a.invoiceNumber)
+          const pb = parseInvoiceNum(b.invoiceNumber)
+          if (pa && pb) {
+            // Year always descending (newest year first regardless of direction)
+            if (pa[0] !== pb[0]) return pb[0] - pa[0]
+            // Sequence number follows sort direction
+            return dir * (pa[1] - pb[1])
+          }
+          return dir * a.invoiceNumber.localeCompare(b.invoiceNumber)
+        }
+        case "status":
+          return dir * (a.status ?? "").localeCompare(b.status ?? "")
+        case "dueDate": {
+          const da = a.dueDate ? new Date(a.dueDate).getTime() : Infinity
+          const db = b.dueDate ? new Date(b.dueDate).getTime() : Infinity
+          return dir * (da - db)
+        }
+        case "customer":
+          return dir * (a.customer?.name ?? "").localeCompare(b.customer?.name ?? "")
+        case "amount":
+          return dir * (a.total - b.total)
+        case "issuedAt":
+          return dir * (new Date(a.issuedAt).getTime() - new Date(b.issuedAt).getTime())
+        default:
+          return 0
+      }
+    })
+  }, [filtered, sortColumn, sortDirection])
+
+  function handleSort(col: SortColumn) {
+    if (sortColumn === col) {
+      setSortDirection((d) => (d === "asc" ? "desc" : "asc"))
+    } else {
+      setSortColumn(col)
+      setSortDirection("asc")
+    }
+  }
+
+  function SortIcon({ col }: { col: SortColumn }) {
+    if (sortColumn !== col) return <ChevronsUpDown className="h-3 w-3 opacity-40" />
+    return sortDirection === "asc"
+      ? <ArrowUp className="h-3 w-3" />
+      : <ArrowDown className="h-3 w-3" />
+  }
+
+  function persistColumnOrder(nextOrder: InvoiceColumnId[]) {
+    setColumnOrder(nextOrder)
+    startTransition(async () => {
+      await updateTableColumnOrderAction("invoices_list_column_order", nextOrder)
+    })
+  }
+
+  function persistColumnWidths(nextWidths: Record<InvoiceColumnId, number>) {
+    setColumnWidths(nextWidths)
+    startTransition(async () => {
+      await updateTableColumnWidthsAction("invoices_list_column_widths", nextWidths)
+    })
+  }
+
+  function handleColumnWidthChange(columnId: InvoiceColumnId, width: number) {
+    setColumnWidths((prev) => ({ ...prev, [columnId]: clampColumnWidth(width) }))
+  }
+
+  function handleColumnWidthCommit(columnId: InvoiceColumnId, width: number) {
+    const nextWidths = { ...columnWidths, [columnId]: clampColumnWidth(width) }
+    persistColumnWidths(nextWidths)
+  }
+
+  const columnDefinitions = useMemo(
+    () => ({
+      invoiceNumber: {
+        label: t(locale, "invoices.tableNumber"),
+        sortable: true,
+        align: "left" as const,
+      },
+      status: {
+        label: t(locale, "invoices.tableStatus"),
+        sortable: true,
+        align: "left" as const,
+      },
+      dueDate: {
+        label: t(locale, "invoices.tableDueDate"),
+        sortable: true,
+        align: "left" as const,
+      },
+      customer: {
+        label: t(locale, "invoices.tableCustomer"),
+        sortable: true,
+        align: "left" as const,
+      },
+      delivery: {
+        label: t(locale, "invoices.tableDelivery"),
+        sortable: false,
+        align: "left" as const,
+      },
+      amount: {
+        label: t(locale, "invoices.tableAmount"),
+        sortable: true,
+        align: "right" as const,
+      },
+      issuedAt: {
+        label: t(locale, "invoices.tableIssued"),
+        sortable: true,
+        align: "left" as const,
+      },
+    }),
+    [locale]
+  )
+  const columnOrderItems = useMemo(
+    () => columnOrder.map((columnId) => ({ id: columnId, label: columnDefinitions[columnId].label })),
+    [columnDefinitions, columnOrder]
+  )
 
   const summaryCards = useMemo(() => {
     const openInvoices = invoices.filter((invoice) =>
@@ -329,7 +509,7 @@ export function InvoiceList({
         ))}
       </div>
 
-      <div className="flex items-center border-b overflow-x-auto">
+      <div className="flex items-center overflow-x-auto border-b">
         <div className="flex flex-1 overflow-x-auto">
           {TAB_ORDER.map((tabValue) => {
             const count = tabValue === "all" ? invoices.length : (counts[tabValue] ?? 0)
@@ -364,26 +544,9 @@ export function InvoiceList({
           })}
         </div>
 
-        {customerNames.length > 1 && (
-          <div className="shrink-0 px-3 pb-1">
-            <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
-              <SelectTrigger className="h-9 text-xs w-[160px]">
-                <SelectValue placeholder={t(locale, "invoices.filterAllCustomers")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t(locale, "invoices.filterAllCustomers")}</SelectItem>
-                {customerNames.map((name) => (
-                  <SelectItem key={name} value={name}>
-                    {name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
       </div>
 
-      <div className="flex items-center gap-2 my-4">
+      <div className="my-4 flex flex-wrap items-center gap-2">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
           <Input
@@ -393,6 +556,21 @@ export function InvoiceList({
             className="pl-9 h-10 text-sm"
           />
         </div>
+        {customerNames.length > 1 && (
+          <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
+            <SelectTrigger className="h-10 w-[180px] text-sm">
+              <SelectValue placeholder={t(locale, "invoices.filterAllCustomers")} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t(locale, "invoices.filterAllCustomers")}</SelectItem>
+              {customerNames.map((name) => (
+                <SelectItem key={name} value={name}>
+                  {name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <Select value={deliveryFilter} onValueChange={(value) => setDeliveryFilter(value as DeliveryFilter)}>
           <SelectTrigger className="h-10 w-[180px] text-sm">
             <SelectValue placeholder={t(locale, "invoices.deliveryFilter")} />
@@ -405,48 +583,77 @@ export function InvoiceList({
             <SelectItem value="blocked">{t(locale, "invoices.deliveryBlocked")}</SelectItem>
           </SelectContent>
         </Select>
-        <div className="flex-1" />
-        <Link href="/invoices/new">
-          <Button size="icon" className="h-9 w-9" title={t(locale, "invoices.newInvoice")}>
-            <Plus className="h-4 w-4" />
-          </Button>
-        </Link>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" className="h-10 text-sm">
+              Columns
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-72 space-y-2 p-4">
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Column order</div>
+            <ColumnOrderList items={columnOrderItems} onChange={(next) => persistColumnOrder(next as InvoiceColumnId[])} />
+          </PopoverContent>
+        </Popover>
       </div>
 
-      {filtered.length === 0 && (
+      {sorted.length === 0 && (
         <p className="text-center text-muted-foreground py-10 text-sm">{t(locale, "invoices.noResults")}</p>
       )}
 
-      {filtered.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b">
-                <th className="text-left px-3 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  {t(locale, "invoices.tableNumber")}
-                </th>
-                <th className="text-left px-3 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  {t(locale, "invoices.tableStatus")}
-                </th>
-                <th className="text-left px-3 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  {t(locale, "invoices.tableDueDate")}
-                </th>
-                <th className="text-left px-3 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  {t(locale, "invoices.tableCustomer")}
-                </th>
-                <th className="text-left px-3 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  {t(locale, "invoices.tableDelivery")}
-                </th>
-                <th className="text-right px-3 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  {t(locale, "invoices.tableAmount")}
-                </th>
-                <th className="text-left px-3 py-2.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  {t(locale, "invoices.tableIssued")}
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {filtered.map((invoice) => {
+      {sorted.length > 0 && (
+        <div className="overflow-hidden rounded-card border bg-card">
+          <Table>
+            <colgroup>
+              {columnOrder.map((columnId) => (
+                <col
+                  key={columnId}
+                  style={{
+                    width: columnWidths[columnId],
+                    minWidth: columnWidths[columnId],
+                    maxWidth: columnWidths[columnId],
+                  }}
+                />
+              ))}
+            </colgroup>
+            <TableHeader>
+              <TableRow>
+                {columnOrder.map((columnId) => {
+                  const definition = columnDefinitions[columnId]
+                  const className = `group/header px-3 py-2.5 ${definition.align === "right" ? "text-right" : "text-left"}`
+
+                  return (
+                    <ResizableTableHead
+                      key={columnId}
+                      width={columnWidths[columnId]}
+                      minWidth={columnId === "customer" ? 220 : columnId === "delivery" ? 180 : 120}
+                      onWidthChange={(width) => handleColumnWidthChange(columnId, width)}
+                      onWidthCommit={(width) => handleColumnWidthCommit(columnId, width)}
+                      className={className}
+                      contentClassName={definition.align === "right" ? "justify-end" : undefined}
+                    >
+                      {definition.sortable ? (
+                        <button
+                          type="button"
+                          onClick={() => handleSort(columnId as SortColumn)}
+                          className={`flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground transition-colors hover:text-foreground ${
+                            definition.align === "right" ? "ml-auto" : ""
+                          }`}
+                        >
+                          {definition.label}
+                          <SortIcon col={columnId as SortColumn} />
+                        </button>
+                      ) : (
+                        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          {definition.label}
+                        </span>
+                      )}
+                    </ResizableTableHead>
+                  )
+                })}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sorted.map((invoice) => {
                 const isCancelled = invoice.status === "cancelled"
                 const readiness = getInvoiceDeliveryReadiness(invoice, {
                   hasRecommandCredentials,
@@ -454,81 +661,106 @@ export function InvoiceList({
                   sellerCountryCode,
                 })
                 return (
-                  <tr
+                  <TableRow
                     key={invoice.id}
                     className={`hover:bg-secondary/60 cursor-pointer transition-colors ${isCancelled ? "opacity-40" : ""}`}
                     onClick={() => setOpenInvoice(invoice)}
                   >
-                    <td className="px-3 py-3 font-mono text-xs text-muted-foreground">
-                      <span className={isCancelled ? "line-through" : ""}>
-                        {invoice.invoiceNumber}
-                      </span>
-                    </td>
-                    <td className="px-3 py-3">
-                      <InvoiceStatusBadge status={invoice.status} />
-                    </td>
-                    <td className="px-3 py-3 text-sm">
-                      <DueDateCell
-                        dueDate={invoice.dueDate ? new Date(invoice.dueDate) : null}
-                        status={invoice.status}
-                        locale={locale}
-                      />
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="flex items-center gap-2">
-                        <CustomerAvatar
-                          name={invoice.customer?.name ?? "?"}
-                          website={invoice.customer?.website}
-                        />
-                        <span className="font-medium truncate max-w-[200px]">
-                          {invoice.customer?.name ?? "—"}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 text-sm">
-                      <div className="flex flex-col gap-0.5">
-                        <div className="flex items-center gap-1.5">
-                          <span>{getInvoiceDeliveryMethodLabel(getInvoiceDeliveryMethod(invoice))}</span>
-                          {invoice.peppolEnvironment && (
-                            <span
-                              className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
-                                invoice.peppolEnvironment === "production"
-                                  ? "bg-success/15 text-success"
-                                  : "bg-warning/15 text-warning"
-                              }`}
-                              title={`Sent via ${invoice.peppolEnvironment === "production" ? "Production" : "Playground"} Peppol environment`}
-                            >
-                              {invoice.peppolEnvironment === "production" ? "Prod" : "Playground"}
-                            </span>
-                          )}
-                        </div>
-                        <span className={`text-xs ${readiness.isReady ? "text-success" : "text-warning"}`}>
-                          {readiness.isReady ? t(locale, "invoices.readyLabel") : t(locale, "invoices.blockedLabel")}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 text-right font-mono text-sm tabular-nums">
-                      {invoice.currency}{" "}
-                      {amountFormatter.format(invoice.total / 100)}
-                    </td>
-                    <td className="px-3 py-3 text-muted-foreground text-sm tabular-nums">
-                      {new Date(invoice.issuedAt).toLocaleDateString(getIntlLocale(locale), {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      })}
-                    </td>
-                  </tr>
+                    {columnOrder.map((columnId) => {
+                      switch (columnId) {
+                        case "invoiceNumber":
+                          return (
+                            <TableCell key={columnId} className="px-3 py-3 font-mono text-xs text-muted-foreground">
+                              <span className={isCancelled ? "line-through" : ""}>
+                                {invoice.invoiceNumber}
+                              </span>
+                            </TableCell>
+                          )
+                        case "status":
+                          return (
+                            <TableCell key={columnId} className="px-3 py-3">
+                              <InvoiceStatusBadge status={invoice.status} />
+                            </TableCell>
+                          )
+                        case "dueDate":
+                          return (
+                            <TableCell key={columnId} className="px-3 py-3 text-sm">
+                              <DueDateCell
+                                dueDate={invoice.dueDate ? new Date(invoice.dueDate) : null}
+                                status={invoice.status}
+                                locale={locale}
+                              />
+                            </TableCell>
+                          )
+                        case "customer":
+                          return (
+                            <TableCell key={columnId} className="px-3 py-3">
+                              <div className="flex items-center gap-2">
+                                <CustomerAvatar
+                                  name={invoice.customer?.name ?? "?"}
+                                  website={invoice.customer?.website}
+                                />
+                                <span className="font-medium truncate max-w-[200px]">
+                                  {invoice.customer?.name ?? "—"}
+                                </span>
+                              </div>
+                            </TableCell>
+                          )
+                        case "delivery":
+                          return (
+                            <TableCell key={columnId} className="px-3 py-3 text-sm">
+                              <div className="flex flex-col gap-0.5">
+                                <div className="flex items-center gap-1.5">
+                                  <span>{getInvoiceDeliveryMethodLabel(getInvoiceDeliveryMethod(invoice))}</span>
+                                  {invoice.peppolEnvironment && (
+                                    <span
+                                      className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
+                                        invoice.peppolEnvironment === "production"
+                                          ? "bg-success/15 text-success"
+                                          : "bg-warning/15 text-warning"
+                                      }`}
+                                      title={`Sent via ${invoice.peppolEnvironment === "production" ? "Production" : "Playground"} Peppol environment`}
+                                    >
+                                      {invoice.peppolEnvironment === "production" ? "Prod" : "Playground"}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className={`text-xs ${readiness.isReady ? "text-success" : "text-warning"}`}>
+                                  {readiness.isReady ? t(locale, "invoices.readyLabel") : t(locale, "invoices.blockedLabel")}
+                                </span>
+                              </div>
+                            </TableCell>
+                          )
+                        case "amount":
+                          return (
+                            <TableCell key={columnId} className="px-3 py-3 text-right font-mono text-sm tabular-nums">
+                              {invoice.currency} {amountFormatter.format(invoice.total / 100)}
+                            </TableCell>
+                          )
+                        case "issuedAt":
+                          return (
+                            <TableCell key={columnId} className="px-3 py-3 text-sm tabular-nums text-muted-foreground">
+                              {new Date(invoice.issuedAt).toLocaleDateString(getIntlLocale(locale), {
+                                day: "numeric",
+                                month: "short",
+                                year: "numeric",
+                              })}
+                            </TableCell>
+                          )
+                      }
+                    })}
+                  </TableRow>
                 )
               })}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
 
       {openInvoice && (
         <InvoiceDrawer
           invoice={openInvoice}
+          locale={locale}
           open={true}
           onClose={() => setOpenInvoice(null)}
         />

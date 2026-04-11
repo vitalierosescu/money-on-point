@@ -4,6 +4,7 @@ import { PageShell } from "@/components/ui/page-shell"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { PageHeader } from "@/components/ui/page-header"
 import AnalyzeForm from "@/components/unsorted/analyze-form"
 import { BulkAnalyzeButton } from "@/components/unsorted/bulk-analyze-button"
 import { getCurrentUser } from "@/lib/auth"
@@ -52,33 +53,28 @@ export default async function UnsortedPage({
 
   return (
     <PageShell maxWidth="page">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">
-            {t(locale, "unsorted.title", { count: fileCount, filesLabel: fileLabel })}
-          </h2>
-          {currentFile && files.length > 1 && (
-            <p className="mt-2 text-sm text-muted-foreground">
-              {t(locale, "unsorted.queueLabel", {
+      <PageHeader
+        title={t(locale, "unsorted.title", { count: fileCount, filesLabel: fileLabel })}
+        description={
+          currentFile && files.length > 1
+            ? `${t(locale, "unsorted.queueLabel", {
                 current: formatLocaleNumber(currentIndex + 1, locale),
                 total: fileCount,
-              })}
-              {" · "}
-              {t(locale, "unsorted.queueDescription", {
+              })} · ${t(locale, "unsorted.queueDescription", {
                 remaining: formatLocaleNumber(remainingCount, locale),
-              })}
-            </p>
-          )}
-          {needsReviewCount > 0 && (
-            <p className="mt-2 text-sm font-medium text-warning">
-              {t(locale, "unsorted.needsReviewCount", {
-                count: formatLocaleNumber(needsReviewCount, locale),
-              })}
-            </p>
-          )}
-        </div>
-        {files.length > 0 && <BulkAnalyzeButton locale={locale} />}
-      </header>
+              })}`
+            : undefined
+        }
+        actions={files.length > 0 ? <BulkAnalyzeButton locale={locale} /> : undefined}
+      />
+
+      {needsReviewCount > 0 && (
+        <p className="text-sm font-medium text-warning">
+          {t(locale, "unsorted.needsReviewCount", {
+            count: formatLocaleNumber(needsReviewCount, locale),
+          })}
+        </p>
+      )}
 
       {config.selfHosted.isEnabled &&
         !settings.openai_api_key &&
@@ -104,10 +100,10 @@ export default async function UnsortedPage({
           <Card
             key={currentFile.id}
             id={currentFile.id}
-            className="flex flex-row flex-wrap md:flex-nowrap justify-center items-start gap-5 p-5 bg-gradient-to-br from-violet-50/80 via-indigo-50/80 to-white border-violet-200/60 rounded-2xl"
+            className="flex flex-row flex-wrap items-start justify-center gap-5 p-5 md:flex-nowrap"
           >
             <div className="w-full max-w-[500px]">
-              <Card>
+              <Card className="bg-card">
                 <FilePreview file={currentFile} locale={locale} />
               </Card>
             </div>

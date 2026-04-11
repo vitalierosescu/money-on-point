@@ -73,6 +73,15 @@ export function RecommandDirectorySearch({
     []
   )
 
+  // Auto-search when an initialQuery is provided (e.g. edit mode pre-filling
+  // the customer's existing name so results appear without retyping).
+  useEffect(() => {
+    if (initialQuery && initialQuery.trim().length >= 3) {
+      runSearch(initialQuery)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const runSearch = (rawValue: string) => {
     const value = rawValue.trim()
     const seq = ++seqRef.current

@@ -10,7 +10,7 @@ export const FormSelectType = ({
   options,
   ...props
 }: {
-  title: string
+  title: React.ReactNode
   emptyValue?: string
   placeholder?: string
   hideIfEmpty?: boolean

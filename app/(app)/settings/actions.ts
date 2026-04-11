@@ -53,6 +53,52 @@ export async function saveSettingsAction(
   return { success: true }
 }
 
+const TABLE_COLUMN_ORDER_CODES = new Set([
+  "expenses_list_column_order",
+  "invoices_list_column_order",
+  "customers_list_column_order",
+])
+
+const TABLE_COLUMN_WIDTH_CODES = new Set([
+  "expenses_list_column_widths",
+  "invoices_list_column_widths",
+  "customers_list_column_widths",
+])
+
+export async function updateTableColumnOrderAction(settingCode: string, order: string[]) {
+  const user = await getCurrentUser()
+
+  if (!TABLE_COLUMN_ORDER_CODES.has(settingCode)) {
+    return { success: false as const, error: "Unsupported table preference." }
+  }
+
+  await updateSettings(user.id, settingCode, JSON.stringify(order))
+
+  revalidateTag(`settings:${user.id}`)
+  revalidatePath("/expenses")
+  revalidatePath("/invoices")
+  revalidatePath("/customers")
+
+  return { success: true as const }
+}
+
+export async function updateTableColumnWidthsAction(settingCode: string, widths: Record<string, number>) {
+  const user = await getCurrentUser()
+
+  if (!TABLE_COLUMN_WIDTH_CODES.has(settingCode)) {
+    return { success: false as const, error: "Unsupported table preference." }
+  }
+
+  await updateSettings(user.id, settingCode, JSON.stringify(widths))
+
+  revalidateTag(`settings:${user.id}`)
+  revalidatePath("/expenses")
+  revalidatePath("/invoices")
+  revalidatePath("/customers")
+
+  return { success: true as const }
+}
+
 export async function syncRecommandCompanyProfileAction(
   prevState: ActionState<{ summary: string }> | null
 ): Promise<ActionState<{ summary: string }>> {
