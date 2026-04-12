@@ -74,6 +74,18 @@ The authenticated app currently follows a Recommand-influenced system:
 - Tables: use shared table primitives; avoid one-off wrappers unless necessary
 - Section labels: use the shared small uppercase label pattern
 
+## Select / Dropdown Pattern
+
+All lookup-type selects (category, project, currency, transaction type, and any field with labelled options) use **`LookupSelect`** from `components/forms/lookup-select.tsx`. Do NOT use `NativeSelect` or `FormSelect` for these.
+
+Rules:
+- When a value is selected, the trigger renders as a coloured pill (no outer input box)
+- The chevron lives inside the pill, right-aligned with extra right padding
+- Search is auto-shown only when the option list has more than 5 items
+- `getLookupPillStyle(color?)` drives pill colour; colourless items get the secondary neutral pill
+- Wrapper components (`FormSelectCategory`, `FormSelectProject`, `FormSelectCurrency`, `FormSelectType`) already use `LookupSelect` — prefer those over calling `LookupSelect` directly
+- Binary/config selects (enabled/disabled toggles, Peppol settings, field-type selectors) may stay as `NativeSelect`
+
 ## Interaction Rules
 
 - Favor `transition-colors`
