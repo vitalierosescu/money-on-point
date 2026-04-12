@@ -1,32 +1,45 @@
+import { LookupSelect } from "@/components/forms/lookup-select"
+import type { UiLocale } from "@/lib/locale"
 import { Project } from "@/prisma/client"
-import { SelectProps } from "@radix-ui/react-select"
-import { FormSelect } from "./simple"
+import { useMemo } from "react"
 
 export const FormSelectProject = ({
   title,
   projects,
-  emptyValue,
+  name,
+  value,
+  defaultValue,
   placeholder,
-  hideIfEmpty = false,
   isRequired = false,
-  ...props
+  onValueChange,
+  locale,
 }: {
-  title: React.ReactNode
+  title?: React.ReactNode
   projects: Project[]
-  emptyValue?: string
+  name?: string
+  value?: string
+  defaultValue?: string
   placeholder?: string
-  hideIfEmpty?: boolean
   isRequired?: boolean
-} & SelectProps) => {
+  onValueChange?: (value: string) => void
+  locale?: UiLocale | string
+}) => {
+  const items = useMemo(
+    () => projects.map((p) => ({ code: p.code, name: p.name, color: p.color ?? undefined })),
+    [projects]
+  )
+
   return (
-    <FormSelect
+    <LookupSelect
       title={title}
-      items={projects.map((project) => ({ code: project.code, name: project.name, color: project.color }))}
-      emptyValue={emptyValue}
+      name={name}
+      value={value}
+      defaultValue={defaultValue}
+      items={items}
+      onValueChange={onValueChange}
       placeholder={placeholder}
-      hideIfEmpty={hideIfEmpty}
       isRequired={isRequired}
-      {...props}
+      locale={locale}
     />
   )
 }

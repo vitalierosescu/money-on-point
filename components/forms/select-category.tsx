@@ -1,39 +1,47 @@
 "use client"
 
+import { LookupSelect } from "@/components/forms/lookup-select"
+import type { UiLocale } from "@/lib/locale"
 import { Category } from "@/prisma/client"
-import { SelectProps } from "@radix-ui/react-select"
 import { useMemo } from "react"
-import { FormSelect } from "./simple"
 
 export const FormSelectCategory = ({
   title,
   categories,
-  emptyValue,
+  name,
+  value,
+  defaultValue,
   placeholder,
-  hideIfEmpty = false,
   isRequired = false,
-  ...props
+  onValueChange,
+  locale,
 }: {
-  title: React.ReactNode
+  title?: React.ReactNode
   categories: Category[]
-  emptyValue?: string
+  name?: string
+  value?: string
+  defaultValue?: string
   placeholder?: string
-  hideIfEmpty?: boolean
   isRequired?: boolean
-} & SelectProps) => {
+  onValueChange?: (value: string) => void
+  locale?: UiLocale | string
+}) => {
   const items = useMemo(
-    () => categories.map((category) => ({ code: category.code, name: category.name, color: category.color })),
+    () => categories.map((c) => ({ code: c.code, name: c.name, color: c.color ?? undefined })),
     [categories]
   )
+
   return (
-    <FormSelect
+    <LookupSelect
       title={title}
+      name={name}
+      value={value}
+      defaultValue={defaultValue}
       items={items}
-      emptyValue={emptyValue}
+      onValueChange={onValueChange}
       placeholder={placeholder}
-      hideIfEmpty={hideIfEmpty}
       isRequired={isRequired}
-      {...props}
+      locale={locale}
     />
   )
 }

@@ -1,41 +1,44 @@
-import { SelectProps } from "@radix-ui/react-select"
+import { LookupSelect } from "@/components/forms/lookup-select"
+import type { UiLocale } from "@/lib/locale"
 import { useMemo } from "react"
-import { FormSelect } from "./simple"
 
 export const FormSelectCurrency = ({
-  currencies,
   title,
-  emptyValue,
+  currencies,
+  name,
+  value,
+  defaultValue,
   placeholder,
-  hideIfEmpty = false,
   isRequired = false,
-  ...props
+  onValueChange,
+  locale,
 }: {
-  currencies: { code: string; name: string }[]
   title?: React.ReactNode
-  emptyValue?: string
+  currencies: { code: string; name: string }[]
+  name?: string
+  value?: string
+  defaultValue?: string
   placeholder?: string
-  hideIfEmpty?: boolean
   isRequired?: boolean
-} & SelectProps) => {
+  onValueChange?: (value: string) => void
+  locale?: UiLocale | string
+}) => {
   const items = useMemo(
-    () =>
-      currencies.map((currency) => ({
-        code: currency.code,
-        name: `${currency.code}`,
-        badge: currency.name,
-      })),
+    () => currencies.map((c) => ({ code: c.code, name: c.code })),
     [currencies]
   )
+
   return (
-    <FormSelect
+    <LookupSelect
       title={title}
+      name={name}
+      value={value}
+      defaultValue={defaultValue}
       items={items}
-      emptyValue={emptyValue}
+      onValueChange={onValueChange}
       placeholder={placeholder}
-      hideIfEmpty={hideIfEmpty}
       isRequired={isRequired}
-      {...props}
+      locale={locale}
     />
   )
 }

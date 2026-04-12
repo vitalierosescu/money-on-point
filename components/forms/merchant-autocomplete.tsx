@@ -14,6 +14,7 @@ type MerchantAutocompleteProps = {
   name?: string
   value: string
   onChange: (value: string) => void
+  onSelect?: (value: string) => void | Promise<void>
   required?: boolean
   locale: UiLocale
   placeholder?: string
@@ -25,6 +26,7 @@ export function MerchantAutocomplete({
   name = "merchant",
   value,
   onChange,
+  onSelect,
   required = false,
   locale,
   placeholder,
@@ -65,6 +67,7 @@ export function MerchantAutocomplete({
 
   function handleSelect(merchant: string) {
     onChange(merchant)
+    void onSelect?.(merchant)
     setOpen(false)
     inputRef.current?.focus()
   }

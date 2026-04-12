@@ -40,6 +40,7 @@ model User {
   sessions            Session[]
   appData             AppData[]
   progress            Progress[]
+  analysisRuns        AnalysisRun[]
   customers           Customer[]
   invoices            Invoice[]
   archieCustomerMaps  ArchieCustomerMap[]
@@ -167,6 +168,7 @@ model File {
   isSplitted        Boolean  @default(false) @map("is_splitted")
   cachedParseResult Json?    @map("cached_parse_result")
   createdAt         DateTime @default(now()) @map("created_at")
+  analysisRunItems  AnalysisRunItem[]
 
   @@map("files")
 }
@@ -417,4 +419,56 @@ model Progress {
 
   @@index([userId])
   @@map("progress")
+}
+
+model AnalysisRun {
+  id             String            @id @default(uuid()) @db.Uuid
+  userId         String            @map("user_id") @db.Uuid
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind           String
+  mode           String
+  status         String
+  total          Int               @default(0)
+  processed      Int               @default(0)
+  autoSaved      Int               @default(0) @map("auto_saved")
+  needsReview    Int               @default(0) @map("needs_review")
+  failedCount    Int               @default(0) @map("failed_count")
+  skipped        Int               @default(0)
+  runnerId       String?           @map("runner_id")
+  leaseExpiresAt DateTime?         @map("lease_expires_at")
+  lastHeartbeatAt DateTime?        @map("last_heartbeat_at")
+  startedAt      DateTime?         @map("started_at")
+  finishedAt     DateTime?         @map("finished_at")
+  lastError      String?           @map("last_error")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+  items          AnalysisRunItem[]
+
+  @@index([userId, status, createdAt])
+  @@index([userId, createdAt])
+  @@map("analysis_runs")
+}
+
+model AnalysisRunItem {
+  id               String      @id @default(uuid()) @db.Uuid
+  runId            String      @map("run_id") @db.Uuid
+  run              AnalysisRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  fileId           String      @map("file_id") @db.Uuid
+  file             File        @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  position         Int
+  fileNameSnapshot String      @map("file_name_snapshot")
+  state            String
+  attempts         Int         @default(0)
+  transactionId    String?     @map("transaction_id") @db.Uuid
+  errorCode        String?     @map("error_code")
+  errorMessage     String?     @map("error_message")
+  startedAt        DateTime?   @map("started_at")
+  finishedAt       DateTime?   @map("finished_at")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+
+  @@unique([runId, fileId])
+  @@index([runId, state, position])
+  @@index([fileId, createdAt])
+  @@map("analysis_run_items")
 }

@@ -1,7 +1,7 @@
 import { FormSelectCurrency } from "@/components/forms/select-currency"
 import { FormAvatar, FormInput, FormTextarea } from "@/components/forms/simple"
 import { Button } from "@/components/ui/button"
-import { NativeSelect } from "@/components/ui/native-select"
+import { LookupSelect } from "@/components/forms/lookup-select"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { getBelgianAuthorRightsRule, isAuthorRightsMode, type AuthorRightsSplitPreset } from "@/lib/author-rights"
 import { t } from "@/lib/i18n"
@@ -404,14 +404,16 @@ export function InvoicePage({
         </div>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <div>
-            <label className="mb-1 block text-caption text-muted-foreground">{t(locale, "invoices.form.invoiceType")}</label>
-            <NativeSelect
+            <LookupSelect
+              title={t(locale, "invoices.form.invoiceType")}
               value={invoiceData.invoiceMode}
-              onChange={(e) => setInvoiceMode(e.target.value as "standard" | "author_rights")}
-            >
-              <option value="standard">{t(locale, "invoices.form.standardInvoice")}</option>
-              <option value="author_rights">{t(locale, "invoices.form.authorRightsInvoice")}</option>
-            </NativeSelect>
+              items={[
+                { code: "standard", name: t(locale, "invoices.form.standardInvoice") },
+                { code: "author_rights", name: t(locale, "invoices.form.authorRightsInvoice") },
+              ]}
+              onValueChange={(value) => setInvoiceMode(value as "standard" | "author_rights")}
+              locale={locale}
+            />
           </div>
           {isAuthorRightsInvoice && (
             <div>

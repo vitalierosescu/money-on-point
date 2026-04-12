@@ -12,6 +12,7 @@ import {
   getInvoiceDeliveryMethodLabel,
   getInvoiceDeliveryReadiness,
 } from "@/lib/invoice-delivery"
+import { getInvoiceDeliveryPresentation } from "@/lib/invoice-state-presentation"
 import { InvoiceWithCustomer } from "@/models/invoices"
 import { ArrowDown, ArrowUp, ChevronsUpDown, Plus, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -47,7 +48,7 @@ type InvoiceListProps = {
   sellerCountryCode?: string | null
 }
 
-type TabStatus = "all" | "draft" | "sent" | "overdue" | "paid"
+type TabStatus = "all" | "draft" | "open" | "overdue" | "paid"
 type DeliveryFilter = "all" | "ready_to_send" | "peppol_ready" | "email_ready" | "blocked"
 type SortColumn = "invoiceNumber" | "status" | "dueDate" | "customer" | "amount" | "issuedAt"
 type SortDirection = "asc" | "desc"
@@ -66,11 +67,15 @@ const DEFAULT_COLUMN_ORDER: InvoiceColumnId[] = [
 const TAB_KEYS: Record<TabStatus, string> = {
   all: "invoices.tabsAll",
   draft: "invoices.tabsDraft",
-  sent: "invoices.tabsSent",
+  open: "invoices.tabsOpen",
   overdue: "invoices.tabsOverdue",
   paid: "invoices.tabsPaid",
 }
-const TAB_ORDER: TabStatus[] = ["all", "draft", "sent", "overdue", "paid"]
+const TAB_ORDER: TabStatus[] = ["all", "draft", "open", "overdue", "paid"]
+
+function isOpenInvoiceStatus(status: string | null | undefined) {
+  return status === "sent" || status === "partially_paid"
+}
 
 function formatCurrencyTotals(
   entries: InvoiceWithCustomer[],
@@ -101,17 +106,15 @@ function formatCurrencyTotals(
 function DueDateCell({
   dueDate,
   status,
+  paidAt,
   locale,
 }: {
   dueDate: Date | null | undefined
   status: string
+  paidAt?: Date | null | undefined
   locale: UiLocale
 }) {
   if (!dueDate) {
-    return <span className="text-muted-foreground">—</span>
-  }
-
-  if (status === "paid" || status === "cancelled") {
     return <span className="text-muted-foreground">—</span>
   }
 
@@ -126,9 +129,22 @@ function DueDateCell({
     month: "short",
   })
 
+  if (status === "cancelled") {
+    return <span className="text-muted-foreground">{dateStr}</span>
+  }
+
   let subText = ""
   let subColor = "text-muted-foreground"
-  if (diffDays === 0) {
+  if (status === "paid") {
+    subText = paidAt
+      ? t(locale, "invoices.paidOn", {
+          date: new Date(paidAt).toLocaleDateString(getIntlLocale(locale), {
+            day: "numeric",
+            month: "short",
+          }),
+        })
+      : t(locale, "invoices.paidLabel")
+  } else if (diffDays === 0) {
     subText = t(locale, "invoices.dueToday")
     subColor = "text-warning"
   } else if (diffDays > 0) {
@@ -211,14 +227,14 @@ export function InvoiceList({
   const counts = useMemo(() => {
     const c: Record<string, number> = {
       draft: 0,
-      sent: 0,
+      open: 0,
       overdue: 0,
       paid: 0,
     }
     for (const inv of invoices) {
       const s = inv.status ?? "draft"
-      if (s === "partially_paid") {
-        c.sent += 1
+      if (isOpenInvoiceStatus(s)) {
+        c.open += 1
       } else if (s in c) {
         c[s] += 1
       }
@@ -231,8 +247,8 @@ export function InvoiceList({
 
     if (activeTab !== "all") {
       result = result.filter((inv) => {
-        if (activeTab === "sent") {
-          return inv.status === "sent" || inv.status === "partially_paid"
+        if (activeTab === "open") {
+          return isOpenInvoiceStatus(inv.status)
         }
         return inv.status === activeTab
       })
@@ -401,17 +417,9 @@ export function InvoiceList({
   )
 
   const summaryCards = useMemo(() => {
-    const openInvoices = invoices.filter((invoice) =>
-      invoice.status === "sent" || invoice.status === "overdue" || invoice.status === "partially_paid"
-    )
+    const openInvoices = invoices.filter((invoice) => isOpenInvoiceStatus(invoice.status))
     const overdueInvoices = invoices.filter((invoice) => invoice.status === "overdue")
-
-    const now = new Date()
-    const paidThisMonth = invoices.filter((invoice) => {
-      if (invoice.status !== "paid" || !invoice.paidAt) return false
-      const paidAt = new Date(invoice.paidAt)
-      return paidAt.getFullYear() === now.getFullYear() && paidAt.getMonth() === now.getMonth()
-    })
+    const paidInvoices = invoices.filter((invoice) => invoice.status === "paid")
 
     const draftInvoices = invoices.filter((invoice) => invoice.status === "draft")
     const sendReadyDrafts = draftInvoices.filter((invoice) =>
@@ -451,11 +459,14 @@ export function InvoiceList({
             : t(locale, "invoices.summaryOverdueNeedsAction"),
       },
       {
-        label: t(locale, "invoices.summaryPaidThisMonth"),
-        value: String(paidThisMonth.length),
+        label: t(locale, "invoices.summaryPaid"),
+        value: String(paidInvoices.length),
         tone: "success",
-        detail: formatCurrencyTotals(paidThisMonth, (invoice) => invoice.paidAmount || invoice.total, locale),
-        note: now.toLocaleDateString(getIntlLocale(locale), { month: "long", year: "numeric" }),
+        detail: formatCurrencyTotals(paidInvoices, (invoice) => invoice.paidAmount || invoice.total, locale),
+        note:
+          paidInvoices.length === 1
+            ? t(locale, "invoices.summaryPaidNoteOne")
+            : t(locale, "invoices.summaryPaidNoteMany", { count: paidInvoices.length }),
       },
       {
         label: t(locale, "invoices.summaryReadyToSend"),
@@ -655,11 +666,7 @@ export function InvoiceList({
             <TableBody>
               {sorted.map((invoice) => {
                 const isCancelled = invoice.status === "cancelled"
-                const readiness = getInvoiceDeliveryReadiness(invoice, {
-                  hasRecommandCredentials,
-                  environmentLabel: recommandEnvironmentLabel,
-                  sellerCountryCode,
-                })
+                const deliveryPresentation = getInvoiceDeliveryPresentation(invoice.deliveryStatus)
                 return (
                   <TableRow
                     key={invoice.id}
@@ -688,6 +695,7 @@ export function InvoiceList({
                               <DueDateCell
                                 dueDate={invoice.dueDate ? new Date(invoice.dueDate) : null}
                                 status={invoice.status}
+                                paidAt={invoice.paidAt ? new Date(invoice.paidAt) : null}
                                 locale={locale}
                               />
                             </TableCell>
@@ -725,8 +733,8 @@ export function InvoiceList({
                                     </span>
                                   )}
                                 </div>
-                                <span className={`text-xs ${readiness.isReady ? "text-success" : "text-warning"}`}>
-                                  {readiness.isReady ? t(locale, "invoices.readyLabel") : t(locale, "invoices.blockedLabel")}
+                                <span className={`text-xs ${deliveryPresentation.textClassName}`}>
+                                  {deliveryPresentation.label}
                                 </span>
                               </div>
                             </TableCell>

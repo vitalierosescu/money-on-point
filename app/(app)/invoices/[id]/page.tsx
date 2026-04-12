@@ -6,10 +6,10 @@ import { PageShell } from "@/components/ui/page-shell"
 import {
   getInvoiceDeliveryMethod,
   getInvoiceDeliveryMethodLabel,
-  getInvoiceDeliveryStatusLabel,
   normalizeInvoiceDeliveryStatus,
 } from "@/lib/invoice-delivery"
 import { isAuthorRightsMode, type AuthorRightsData } from "@/lib/author-rights"
+import { getInvoiceDeliveryPresentation } from "@/lib/invoice-state-presentation"
 import { InvoiceFormData } from "@/lib/invoice-pdf/types"
 import { Button } from "@/components/ui/button"
 import { getCurrentUser } from "@/lib/auth"
@@ -51,6 +51,7 @@ export default async function InvoiceDetailPage({
     : []
   const deliveryMethod = getInvoiceDeliveryMethod(invoiceFull)
   const deliveryStatus = normalizeInvoiceDeliveryStatus(invoiceFull.deliveryStatus)
+  const deliveryPresentation = getInvoiceDeliveryPresentation(deliveryStatus)
   const authorRightsData = invoice.authorRightsData
     ? (invoice.authorRightsData as AuthorRightsData)
     : null
@@ -167,7 +168,7 @@ export default async function InvoiceDetailPage({
           )}
           <div className="flex justify-between text-muted-foreground">
             <span>Delivery status</span>
-            <span>{getInvoiceDeliveryStatusLabel(deliveryStatus)}</span>
+            <span className={deliveryPresentation.textClassName}>{deliveryPresentation.label}</span>
           </div>
           {invoice.providerReferenceId && (
             <div className="flex justify-between text-muted-foreground">

@@ -36,7 +36,7 @@ import type { ExpenseWithRelations } from "@/models/transactions"
 import type { Category, Field, Project } from "@/prisma/client"
 import { Check, ChevronDown, EyeOff, Loader2, Plus, Search, Trash2, X } from "lucide-react"
 import { useRouter } from "next/navigation"
-import React, { useEffect, useMemo, useState, useTransition } from "react"
+import React, { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 import { toast } from "sonner"
 
 type ExpenseListProps = {
@@ -457,6 +457,24 @@ export function ExpenseList({
 
   const tabConfig = useMemo(() => getTabConfig(locale), [locale])
 
+  const handleToggleFieldVisibility = useCallback((field: Field, nextValue: boolean) => {
+    const previousValue = fieldVisibility[field.code]
+    setFieldVisibility((prev) => ({ ...prev, [field.code]: nextValue }))
+    setPendingVisibilityCode(field.code)
+
+    startTransition(async () => {
+      try {
+        await updateExpenseFieldVisibilityAction(field.code, nextValue)
+      } catch (error) {
+        console.error("Failed to update field visibility:", error)
+        setFieldVisibility((prev) => ({ ...prev, [field.code]: previousValue }))
+        toast.error(t(locale, "expenses.fieldVisibilityFailed"))
+      } finally {
+        setPendingVisibilityCode(null)
+      }
+    })
+  }, [fieldVisibility, locale, startTransition])
+
   const visibleFields = useMemo(
     () => fields.filter((field) => fieldVisibility[field.code]),
     [fieldVisibility, fields]
@@ -466,23 +484,51 @@ export function ExpenseList({
     () => columnOrder.filter((columnId) => columnId === "status" || fieldVisibility[columnId]),
     [columnOrder, fieldVisibility]
   )
-  const visibleColumnOrderItems = useMemo(
-    () =>
-      visibleColumnIds.map((columnId) => ({
-        id: columnId,
-        label: columnId === "status" ? t(locale, "expenses.tableStatus") : fieldByCode.get(columnId)?.name ?? columnId,
-      })),
-    [fieldByCode, locale, visibleColumnIds]
-  )
-
-  const filteredFieldChoices = useMemo(() => {
+  const columnPickerItems = useMemo(() => {
     const needle = fieldSearch.trim().toLowerCase()
-    if (!needle) {
-      return fields
-    }
+    const statusLabel = t(locale, "expenses.tableStatus")
 
-    return fields.filter((field) => field.name.toLowerCase().includes(needle))
-  }, [fieldSearch, fields])
+    return columnOrder.flatMap((columnId) => {
+      if (columnId === "status") {
+        if (needle && !statusLabel.toLowerCase().includes(needle)) {
+          return []
+        }
+
+        return [
+          {
+            id: columnId,
+            label: statusLabel,
+            endContent: <Checkbox checked disabled aria-label={statusLabel} />,
+          },
+        ]
+      }
+
+      const field = fieldByCode.get(columnId)
+      if (!field) {
+        return []
+      }
+
+      if (needle && !field.name.toLowerCase().includes(needle)) {
+        return []
+      }
+
+      return [
+        {
+          id: field.code,
+          label: field.name,
+          endContent: (
+            <Checkbox
+              checked={fieldVisibility[field.code]}
+              disabled={pendingVisibilityCode === field.code}
+              onCheckedChange={(checked) => handleToggleFieldVisibility(field, checked === true)}
+              aria-label={field.name}
+            />
+          ),
+        },
+      ]
+    })
+  }, [columnOrder, fieldByCode, fieldSearch, fieldVisibility, handleToggleFieldVisibility, locale, pendingVisibilityCode])
+  const columnPickerItemIds = useMemo(() => columnPickerItems.map((item) => item.id), [columnPickerItems])
 
   const counts = useMemo(() => {
     const nextCounts: Record<string, number> = {}
@@ -589,24 +635,6 @@ export function ExpenseList({
     })
   }
 
-  function handleToggleFieldVisibility(field: Field, nextValue: boolean) {
-    const previousValue = fieldVisibility[field.code]
-    setFieldVisibility((prev) => ({ ...prev, [field.code]: nextValue }))
-    setPendingVisibilityCode(field.code)
-
-    startTransition(async () => {
-      try {
-        await updateExpenseFieldVisibilityAction(field.code, nextValue)
-      } catch (error) {
-        console.error("Failed to update field visibility:", error)
-        setFieldVisibility((prev) => ({ ...prev, [field.code]: previousValue }))
-        toast.error(t(locale, "expenses.fieldVisibilityFailed"))
-      } finally {
-        setPendingVisibilityCode(null)
-      }
-    })
-  }
-
   function handleCreateField(data: { name: string; type: "string" | "single_select"; options?: string }) {
     startTransition(async () => {
       const result = await createExpenseFieldAction(data)
@@ -631,8 +659,8 @@ export function ExpenseList({
     })
   }
 
-  function handleVisibleColumnOrderChange(nextVisibleOrder: string[]) {
-    const nextOrder = reorderVisibleColumns(columnOrder, visibleColumnIds, nextVisibleOrder)
+  function handleColumnPickerOrderChange(nextVisibleOrder: string[]) {
+    const nextOrder = reorderVisibleColumns(columnOrder, columnPickerItemIds, nextVisibleOrder)
     persistColumnOrder(nextOrder)
   }
 
@@ -717,24 +745,11 @@ export function ExpenseList({
               onChange={(event) => setFieldSearch(event.target.value)}
               placeholder={t(locale, "expenses.findField")}
             />
-            <div className="max-h-80 space-y-2 overflow-y-auto">
-              {filteredFieldChoices.map((field) => (
-                <label key={field.code} className="flex items-center justify-between gap-3 rounded-lg px-1 py-1 text-sm">
-                  <span className="truncate">{field.name}</span>
-                  <Checkbox
-                    checked={fieldVisibility[field.code]}
-                    disabled={pendingVisibilityCode === field.code}
-                    onCheckedChange={(checked) => handleToggleFieldVisibility(field, checked === true)}
-                  />
-                </label>
-              ))}
-            </div>
-            <div className="space-y-2 border-t pt-3">
-              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Column order</div>
+            <div className="max-h-96 overflow-y-auto">
               <ColumnOrderList
-                items={visibleColumnOrderItems}
-                onChange={handleVisibleColumnOrderChange}
-                emptyState="No visible columns to reorder."
+                items={columnPickerItems}
+                onChange={handleColumnPickerOrderChange}
+                emptyState="No fields available."
               />
             </div>
           </PopoverContent>

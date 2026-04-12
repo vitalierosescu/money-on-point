@@ -36,6 +36,10 @@ export function getTransactionFileUploadPath(fileUuid: string, filename: string,
   return formatFilePath(storedFileName, transaction.issuedAt || new Date())
 }
 
+export function getNamedTransactionFileUploadPath(filename: string, transaction: Pick<Transaction, "issuedAt">) {
+  return formatFilePath(filename, transaction.issuedAt || new Date())
+}
+
 export function fullPathForFile(user: User, file: File) {
   const userUploadsDirectory = getUserUploadsDirectory(user)
   return safePathJoin(userUploadsDirectory, file.path)
@@ -65,6 +69,22 @@ export async function fileExists(filePath: string) {
   } catch {
     return false
   }
+}
+
+export async function ensureUniqueRelativeFilePath(basePath: string, relativeFilePath: string) {
+  let nextRelativePath = relativeFilePath
+  let suffix = 2
+
+  while (await fileExists(safePathJoin(basePath, nextRelativePath))) {
+    const directory = path.dirname(relativeFilePath)
+    const extension = path.extname(relativeFilePath)
+    const basename = path.basename(relativeFilePath, extension)
+    const suffixedFilename = `${basename}-${suffix}${extension}`
+    nextRelativePath = directory === "." ? suffixedFilename : path.join(directory, suffixedFilename)
+    suffix += 1
+  }
+
+  return nextRelativePath
 }
 
 export async function getDirectorySize(directoryPath: string) {

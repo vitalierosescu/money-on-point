@@ -3,12 +3,14 @@
 import { GripVertical } from "lucide-react"
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core"
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable"
+import type { ReactNode } from "react"
 
 import { cn } from "@/lib/utils"
 
 type ColumnOrderItem = {
   id: string
   label: string
+  endContent?: ReactNode
 }
 
 export function ColumnOrderList({
@@ -67,20 +69,27 @@ function SortableColumnOrderItem({
         transition,
       }}
       className={cn(
-        "flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm",
+        "flex items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2 text-sm",
         isDragging && "opacity-80 shadow-sm"
       )}
     >
-      <button
-        type="button"
-        {...attributes}
-        {...listeners}
-        className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-secondary hover:text-foreground cursor-grab active:cursor-grabbing"
-        aria-label={handleLabel}
-      >
-        <GripVertical className="h-4 w-4" />
-      </button>
-      <span className="truncate">{item.label}</span>
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          className="inline-flex h-6 w-6 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground hover:bg-secondary hover:text-foreground active:cursor-grabbing"
+          aria-label={handleLabel}
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+        <span className="truncate">{item.label}</span>
+      </div>
+      {item.endContent ? (
+        <div className="shrink-0" onClick={(event) => event.stopPropagation()}>
+          {item.endContent}
+        </div>
+      ) : null}
     </div>
   )
 }

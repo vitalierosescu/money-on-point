@@ -1,38 +1,47 @@
-import { SelectProps } from "@radix-ui/react-select"
-import { FormSelect } from "./simple"
+import { LookupSelect } from "@/components/forms/lookup-select"
+import type { UiLocale } from "@/lib/locale"
+
+const DEFAULT_TYPE_OPTIONS = [
+  { code: "expense", name: "Expense" },
+  { code: "income", name: "Income" },
+  { code: "pending", name: "Pending" },
+  { code: "other", name: "Other" },
+]
 
 export const FormSelectType = ({
   title,
-  emptyValue,
+  name,
+  value,
+  defaultValue,
   placeholder,
-  hideIfEmpty = false,
   isRequired = false,
+  onValueChange,
   options,
-  ...props
+  locale,
 }: {
-  title: React.ReactNode
-  emptyValue?: string
+  title?: React.ReactNode
+  name?: string
+  value?: string
+  defaultValue?: string
   placeholder?: string
-  hideIfEmpty?: boolean
   isRequired?: boolean
-  options?: Array<{ code: string; name: string; badge?: string }>
-} & SelectProps) => {
-  const items = options ?? [
-    { code: "expense", name: "Expense", badge: "↓" },
-    { code: "income", name: "Income", badge: "↑" },
-    { code: "pending", name: "Pending", badge: "⏲︎" },
-    { code: "other", name: "Other", badge: "?" },
-  ]
+  onValueChange?: (value: string) => void
+  options?: Array<{ code: string; name: string }>
+  locale?: UiLocale | string
+}) => {
+  const items = options ?? DEFAULT_TYPE_OPTIONS
 
   return (
-    <FormSelect
+    <LookupSelect
       title={title}
+      name={name}
+      value={value}
+      defaultValue={defaultValue}
       items={items}
-      emptyValue={emptyValue}
+      onValueChange={onValueChange}
       placeholder={placeholder}
-      hideIfEmpty={hideIfEmpty}
       isRequired={isRequired}
-      {...props}
+      locale={locale}
     />
   )
 }

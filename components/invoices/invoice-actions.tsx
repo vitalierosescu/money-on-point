@@ -20,12 +20,12 @@ import {
   getCustomerBillingEmails,
   getInvoiceDeliveryMethod,
   getInvoiceDeliveryMethodLabel,
-  getInvoiceDeliveryStatusLabel,
   normalizeDeliveryExceptionCode,
   normalizeEmailCopyStatus,
   normalizeInvoiceDeliveryStatus,
 } from "@/lib/invoice-delivery"
 import { isAuthorRightsMode } from "@/lib/author-rights"
+import { getInvoiceDeliveryPresentation } from "@/lib/invoice-state-presentation"
 import { InvoiceWithCustomer } from "@/models/invoices"
 import Link from "next/link"
 
@@ -42,6 +42,7 @@ export function InvoiceActions({
 
   const deliveryMethod = getInvoiceDeliveryMethod(invoice)
   const deliveryStatus = normalizeInvoiceDeliveryStatus(invoice.deliveryStatus)
+  const deliveryPresentation = getInvoiceDeliveryPresentation(deliveryStatus)
   const defaultBillingRecipients = getCustomerBillingEmails(invoice.customer)
   const isDeliveryLocked = deliveryStatus === "sent" || invoice.status === "paid" || invoice.status === "cancelled"
   const peppolWasDelivered = deliveryMethod === "peppol" && deliveryStatus === "sent"
@@ -101,8 +102,8 @@ export function InvoiceActions({
         <span className="rounded-full bg-background px-2.5 py-1 text-xs font-medium">
           {getInvoiceDeliveryMethodLabel(deliveryMethod)}
         </span>
-        <span className="rounded-full bg-background px-2.5 py-1 text-xs text-muted-foreground">
-          {getInvoiceDeliveryStatusLabel(deliveryStatus)}
+        <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${deliveryPresentation.chipClassName}`}>
+          {deliveryPresentation.label}
         </span>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2">

@@ -11,49 +11,92 @@ export type DashboardStats = {
   invoicesProcessed: number
 }
 
+const EXCLUDED_INVOICE_STATUSES = ["draft", "cancelled"]
+
+function getDateFilter(filters: TransactionFilters) {
+  return filters.dateFrom || filters.dateTo
+    ? {
+        gte: filters.dateFrom ? new Date(filters.dateFrom) : undefined,
+        lte: filters.dateTo ? new Date(filters.dateTo) : undefined,
+      }
+    : undefined
+}
+
+function calcInvoiceTotalPerCurrency(
+  invoices: Array<{
+    currency: string
+    total: number
+  }>
+): Record<string, number> {
+  return invoices.reduce(
+    (acc, invoice) => {
+      const currency = invoice.currency.toUpperCase()
+      acc[currency] = (acc[currency] ?? 0) + invoice.total
+      return acc
+    },
+    {} as Record<string, number>
+  )
+}
+
+function getPeriodKey(date: Date, groupByDay: boolean) {
+  return groupByDay
+    ? date.toISOString().split("T")[0]
+    : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
+}
+
+function getTransactionAmountInCurrency(
+  transaction: {
+    convertedCurrencyCode?: string | null
+    convertedTotal?: number | null
+    currencyCode?: string | null
+    total?: number | null
+  },
+  defaultCurrency: string
+) {
+  return transaction.convertedCurrencyCode?.toUpperCase() === defaultCurrency.toUpperCase()
+    ? transaction.convertedTotal || 0
+    : transaction.currencyCode?.toUpperCase() === defaultCurrency.toUpperCase()
+      ? transaction.total || 0
+      : 0
+}
+
+function getInvoiceAmountInCurrency(
+  invoice: {
+    currency: string
+    total: number
+  },
+  defaultCurrency: string
+) {
+  return invoice.currency.toUpperCase() === defaultCurrency.toUpperCase() ? invoice.total : 0
+}
+
 export const getDashboardStats = cache(
   async (userId: string, filters: TransactionFilters = {}): Promise<DashboardStats> => {
-    const dateFilter =
-      filters.dateFrom || filters.dateTo
-        ? {
-            gte: filters.dateFrom ? new Date(filters.dateFrom) : undefined,
-            lte: filters.dateTo ? new Date(filters.dateTo) : undefined,
-          }
-        : undefined
+    const dateFilter = getDateFilter(filters)
 
-    // Income: from paid Invoice records
-    const paidInvoices = await prisma.invoice.findMany({
-      where: {
-        userId,
-        status: "paid",
-        ...(dateFilter ? { paidAt: dateFilter } : {}),
-      },
-      include: {
-        transaction: true,
-      },
-    })
+    const [bookedInvoices, paidExpenses] = await Promise.all([
+      prisma.invoice.findMany({
+        where: {
+          userId,
+          status: { notIn: EXCLUDED_INVOICE_STATUSES },
+          ...(dateFilter ? { issuedAt: dateFilter } : {}),
+        },
+        select: {
+          currency: true,
+          total: true,
+        },
+      }),
+      prisma.transaction.findMany({
+        where: {
+          userId,
+          type: "expense",
+          status: "paid",
+          ...(dateFilter ? { issuedAt: dateFilter } : {}),
+        },
+      }),
+    ])
 
-    // Expenses: from paid expense Transactions
-    const paidExpenses = await prisma.transaction.findMany({
-      where: {
-        userId,
-        type: "expense",
-        status: "paid",
-        ...(dateFilter ? { issuedAt: dateFilter } : {}),
-      },
-    })
-
-    // Build per-currency totals for income, preferring converted values on linked transactions
-    const totalIncomePerCurrency: Record<string, number> = {}
-    for (const inv of paidInvoices) {
-      const convertedCurrency = inv.transaction?.convertedCurrencyCode?.toUpperCase()
-      const originalCurrency = inv.currency.toUpperCase()
-      const currency = convertedCurrency || originalCurrency
-      const amount = convertedCurrency ? (inv.transaction?.convertedTotal ?? 0) : inv.total
-      totalIncomePerCurrency[currency] = (totalIncomePerCurrency[currency] ?? 0) + amount
-    }
-
-    // Build per-currency totals for expenses, preferring converted values when available
+    const totalIncomePerCurrency = calcInvoiceTotalPerCurrency(bookedInvoices)
     const totalExpensesPerCurrency = calcTotalPerCurrency(paidExpenses)
 
     const allCurrencies = new Set([...Object.keys(totalIncomePerCurrency), ...Object.keys(totalExpensesPerCurrency)])
@@ -68,7 +111,7 @@ export const getDashboardStats = cache(
       totalIncomePerCurrency,
       totalExpensesPerCurrency,
       profitPerCurrency,
-      invoicesProcessed: paidInvoices.length,
+      invoicesProcessed: bookedInvoices.length,
     }
   }
 )
@@ -93,16 +136,19 @@ export const getProjectStats = cache(async (userId: string, projectId: string, f
   }
 
   const transactions = await prisma.transaction.findMany({ where: { ...where, userId } })
-  const totalIncomePerCurrency = calcTotalPerCurrency(transactions.filter((t) => t.type === "income"))
-  const totalExpensesPerCurrency = calcTotalPerCurrency(transactions.filter((t) => t.type === "expense"))
+  const incomeTransactions = transactions.filter((t) => t.type === "income")
+  const expenseTransactions = transactions.filter((t) => t.type === "expense")
+  const totalIncomePerCurrency = calcTotalPerCurrency(incomeTransactions)
+  const totalExpensesPerCurrency = calcTotalPerCurrency(expenseTransactions)
+  const allCurrencies = new Set([...Object.keys(totalIncomePerCurrency), ...Object.keys(totalExpensesPerCurrency)])
   const profitPerCurrency = Object.fromEntries(
-    Object.keys(totalIncomePerCurrency).map((currency) => [
+    Array.from(allCurrencies).map((currency) => [
       currency,
-      totalIncomePerCurrency[currency] - totalExpensesPerCurrency[currency],
+      (totalIncomePerCurrency[currency] ?? 0) - (totalExpensesPerCurrency[currency] ?? 0),
     ])
   )
 
-  const invoicesProcessed = transactions.length
+  const invoicesProcessed = incomeTransactions.length
   return {
     totalIncomePerCurrency,
     totalExpensesPerCurrency,
@@ -142,74 +188,87 @@ export const getTimeSeriesStats = cache(
     filters: TransactionFilters = {},
     defaultCurrency: string = "EUR"
   ): Promise<TimeSeriesData[]> => {
-    const where: Prisma.TransactionWhereInput = { userId }
+    const dateFilter = getDateFilter(filters)
+    const includeIncome = !filters.type || filters.type === "income"
+    const includeExpenses = !filters.type || filters.type === "expense"
+    const includeInvoices = includeIncome && !filters.projectCode && (!filters.categoryCode || filters.categoryCode === "invoice")
 
-    if (filters.dateFrom || filters.dateTo) {
-      where.issuedAt = {
-        gte: filters.dateFrom ? new Date(filters.dateFrom) : undefined,
-        lte: filters.dateTo ? new Date(filters.dateTo) : undefined,
-      }
+    const expenseWhere: Prisma.TransactionWhereInput = {
+      userId,
+      type: "expense",
+    }
+
+    if (dateFilter) {
+      expenseWhere.issuedAt = dateFilter
     }
 
     if (filters.categoryCode) {
-      where.categoryCode = filters.categoryCode
+      expenseWhere.categoryCode = filters.categoryCode
     }
 
     if (filters.projectCode) {
-      where.projectCode = filters.projectCode
+      expenseWhere.projectCode = filters.projectCode
     }
 
-    if (filters.type) {
-      where.type = filters.type
-    }
+    const [expenses, invoices] = await Promise.all([
+      includeExpenses
+        ? prisma.transaction.findMany({
+            where: expenseWhere,
+            orderBy: { issuedAt: "asc" },
+          })
+        : Promise.resolve([]),
+      includeInvoices
+        ? prisma.invoice.findMany({
+            where: {
+              userId,
+              status: { notIn: EXCLUDED_INVOICE_STATUSES },
+              ...(dateFilter ? { issuedAt: dateFilter } : {}),
+            },
+            select: {
+              issuedAt: true,
+              currency: true,
+              total: true,
+            },
+            orderBy: { issuedAt: "asc" },
+          })
+        : Promise.resolve([]),
+    ])
 
-    const transactions = await prisma.transaction.findMany({
-      where,
-      orderBy: { issuedAt: "asc" },
-    })
+    const timelineDates = [
+      ...expenses.map((expense) => expense.issuedAt).filter((date): date is Date => Boolean(date)),
+      ...invoices.map((invoice) => invoice.issuedAt),
+    ].sort((a, b) => a.getTime() - b.getTime())
 
-    if (transactions.length === 0) {
+    if (timelineDates.length === 0) {
       return []
     }
 
-    // Determine if we should group by day or month
-    const dateFrom = filters.dateFrom ? new Date(filters.dateFrom) : new Date(transactions[0].issuedAt!)
-    const dateTo = filters.dateTo ? new Date(filters.dateTo) : new Date(transactions[transactions.length - 1].issuedAt!)
+    const dateFrom = filters.dateFrom ? new Date(filters.dateFrom) : timelineDates[0]
+    const dateTo = filters.dateTo ? new Date(filters.dateTo) : timelineDates[timelineDates.length - 1]
     const daysDiff = Math.ceil((dateTo.getTime() - dateFrom.getTime()) / (1000 * 60 * 60 * 24))
     const groupByDay = daysDiff <= 50
 
-    // Group transactions by time period
-    const grouped = transactions.reduce(
-      (acc, transaction) => {
-        if (!transaction.issuedAt) return acc
+    const grouped: Record<string, TimeSeriesData> = {}
 
-        const date = new Date(transaction.issuedAt)
-        const period = groupByDay
-          ? date.toISOString().split("T")[0] // YYYY-MM-DD
-          : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}` // YYYY-MM
+    for (const expense of expenses) {
+      if (!expense.issuedAt) continue
 
-        if (!acc[period]) {
-          acc[period] = { period, income: 0, expenses: 0, date }
-        }
+      const date = new Date(expense.issuedAt)
+      const period = getPeriodKey(date, groupByDay)
+      if (!grouped[period]) {
+        grouped[period] = { period, income: 0, expenses: 0, date }
+      }
+      grouped[period].expenses += getTransactionAmountInCurrency(expense, defaultCurrency)
+    }
 
-        // Get amount in default currency
-        const amount =
-          transaction.convertedCurrencyCode?.toUpperCase() === defaultCurrency.toUpperCase()
-            ? transaction.convertedTotal || 0
-            : transaction.currencyCode?.toUpperCase() === defaultCurrency.toUpperCase()
-              ? transaction.total || 0
-              : 0 // Skip transactions not in default currency for simplicity
-
-        if (transaction.type === "income") {
-          acc[period].income += amount
-        } else if (transaction.type === "expense") {
-          acc[period].expenses += amount
-        }
-
-        return acc
-      },
-      {} as Record<string, TimeSeriesData>
-    )
+    for (const invoice of invoices) {
+      const date = new Date(invoice.issuedAt)
+      const period = getPeriodKey(date, groupByDay)
+      if (!grouped[period]) {
+        grouped[period] = { period, income: 0, expenses: 0, date }
+      }
+      grouped[period].income += getInvoiceAmountInCurrency(invoice, defaultCurrency)
+    }
 
     return Object.values(grouped).sort((a, b) => a.date.getTime() - b.date.getTime())
   }
@@ -221,128 +280,168 @@ export const getDetailedTimeSeriesStats = cache(
     filters: TransactionFilters = {},
     defaultCurrency: string = "EUR"
   ): Promise<DetailedTimeSeriesData[]> => {
-    const where: Prisma.TransactionWhereInput = { userId }
+    const dateFilter = getDateFilter(filters)
+    const includeIncome = !filters.type || filters.type === "income"
+    const includeExpenses = !filters.type || filters.type === "expense"
+    const includeInvoices = includeIncome && !filters.projectCode && (!filters.categoryCode || filters.categoryCode === "invoice")
 
-    if (filters.dateFrom || filters.dateTo) {
-      where.issuedAt = {
-        gte: filters.dateFrom ? new Date(filters.dateFrom) : undefined,
-        lte: filters.dateTo ? new Date(filters.dateTo) : undefined,
-      }
+    const expenseWhere: Prisma.TransactionWhereInput = {
+      userId,
+      type: "expense",
+    }
+
+    if (dateFilter) {
+      expenseWhere.issuedAt = dateFilter
     }
 
     if (filters.categoryCode) {
-      where.categoryCode = filters.categoryCode
+      expenseWhere.categoryCode = filters.categoryCode
     }
 
     if (filters.projectCode) {
-      where.projectCode = filters.projectCode
+      expenseWhere.projectCode = filters.projectCode
     }
 
-    if (filters.type) {
-      where.type = filters.type
-    }
-
-    const [transactions, categories] = await Promise.all([
-      prisma.transaction.findMany({
-        where,
-        include: {
-          category: true,
-        },
-        orderBy: { issuedAt: "asc" },
-      }),
+    const [expenses, invoices, categories] = await Promise.all([
+      includeExpenses
+        ? prisma.transaction.findMany({
+            where: expenseWhere,
+            include: {
+              category: true,
+            },
+            orderBy: { issuedAt: "asc" },
+          })
+        : Promise.resolve([]),
+      includeInvoices
+        ? prisma.invoice.findMany({
+            where: {
+              userId,
+              status: { notIn: EXCLUDED_INVOICE_STATUSES },
+              ...(dateFilter ? { issuedAt: dateFilter } : {}),
+            },
+            select: {
+              issuedAt: true,
+              currency: true,
+              total: true,
+            },
+            orderBy: { issuedAt: "asc" },
+          })
+        : Promise.resolve([]),
       prisma.category.findMany({
         where: { userId },
         orderBy: { name: "asc" },
       }),
     ])
 
-    if (transactions.length === 0) {
+    const timelineDates = [
+      ...expenses.map((expense) => expense.issuedAt).filter((date): date is Date => Boolean(date)),
+      ...invoices.map((invoice) => invoice.issuedAt),
+    ].sort((a, b) => a.getTime() - b.getTime())
+
+    if (timelineDates.length === 0) {
       return []
     }
 
-    // Determine if we should group by day or month
-    const dateFrom = filters.dateFrom ? new Date(filters.dateFrom) : new Date(transactions[0].issuedAt!)
-    const dateTo = filters.dateTo ? new Date(filters.dateTo) : new Date(transactions[transactions.length - 1].issuedAt!)
+    const dateFrom = filters.dateFrom ? new Date(filters.dateFrom) : timelineDates[0]
+    const dateTo = filters.dateTo ? new Date(filters.dateTo) : timelineDates[timelineDates.length - 1]
     const daysDiff = Math.ceil((dateTo.getTime() - dateFrom.getTime()) / (1000 * 60 * 60 * 24))
     const groupByDay = daysDiff <= 50
 
-    // Create category lookup
     const categoryLookup = new Map(categories.map((cat) => [cat.code, cat]))
+    const invoiceCategory = categoryLookup.get("invoice") || {
+      code: "invoice",
+      name: "Invoice",
+      color: "#22c55e",
+    }
 
-    // Group transactions by time period
-    const grouped = transactions.reduce(
-      (acc, transaction) => {
-        if (!transaction.issuedAt) return acc
+    const grouped = {} as Record<
+      string,
+      {
+        period: string
+        income: number
+        expenses: number
+        date: Date
+        categories: Map<string, CategoryBreakdown>
+        totalTransactions: number
+      }
+    >
 
-        const date = new Date(transaction.issuedAt)
-        const period = groupByDay
-          ? date.toISOString().split("T")[0] // YYYY-MM-DD
-          : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}` // YYYY-MM
+    for (const expense of expenses) {
+      if (!expense.issuedAt) continue
 
-        if (!acc[period]) {
-          acc[period] = {
-            period,
-            income: 0,
-            expenses: 0,
-            date,
-            categories: new Map<string, CategoryBreakdown>(),
-            totalTransactions: 0,
-          }
+      const date = new Date(expense.issuedAt)
+      const period = getPeriodKey(date, groupByDay)
+
+      if (!grouped[period]) {
+        grouped[period] = {
+          period,
+          income: 0,
+          expenses: 0,
+          date,
+          categories: new Map<string, CategoryBreakdown>(),
+          totalTransactions: 0,
         }
+      }
 
-        // Get amount in default currency
-        const amount =
-          transaction.convertedCurrencyCode?.toUpperCase() === defaultCurrency.toUpperCase()
-            ? transaction.convertedTotal || 0
-            : transaction.currencyCode?.toUpperCase() === defaultCurrency.toUpperCase()
-              ? transaction.total || 0
-              : 0 // Skip transactions not in default currency for simplicity
+      const amount = getTransactionAmountInCurrency(expense, defaultCurrency)
+      const categoryCode = expense.categoryCode || "other"
+      const category = categoryLookup.get(categoryCode) || {
+        code: "other",
+        name: "Other",
+        color: "#6b7280",
+      }
 
-        const categoryCode = transaction.categoryCode || "other"
-        const category = categoryLookup.get(categoryCode) || {
-          code: "other",
-          name: "Other",
-          color: "#6b7280",
+      if (!grouped[period].categories.has(categoryCode)) {
+        grouped[period].categories.set(categoryCode, {
+          code: category.code,
+          name: category.name,
+          color: category.color || "#6b7280",
+          income: 0,
+          expenses: 0,
+          transactionCount: 0,
+        })
+      }
+
+      const categoryData = grouped[period].categories.get(categoryCode)!
+      categoryData.transactionCount++
+      categoryData.expenses += amount
+      grouped[period].expenses += amount
+      grouped[period].totalTransactions++
+    }
+
+    for (const invoice of invoices) {
+      const date = new Date(invoice.issuedAt)
+      const period = getPeriodKey(date, groupByDay)
+
+      if (!grouped[period]) {
+        grouped[period] = {
+          period,
+          income: 0,
+          expenses: 0,
+          date,
+          categories: new Map<string, CategoryBreakdown>(),
+          totalTransactions: 0,
         }
+      }
 
-        // Initialize category if not exists
-        if (!acc[period].categories.has(categoryCode)) {
-          acc[period].categories.set(categoryCode, {
-            code: category.code,
-            name: category.name,
-            color: category.color || "#6b7280",
-            income: 0,
-            expenses: 0,
-            transactionCount: 0,
-          })
-        }
+      const amount = getInvoiceAmountInCurrency(invoice, defaultCurrency)
+      if (!grouped[period].categories.has(invoiceCategory.code)) {
+        grouped[period].categories.set(invoiceCategory.code, {
+          code: invoiceCategory.code,
+          name: invoiceCategory.name,
+          color: invoiceCategory.color || "#22c55e",
+          income: 0,
+          expenses: 0,
+          transactionCount: 0,
+        })
+      }
 
-        const categoryData = acc[period].categories.get(categoryCode)!
-        categoryData.transactionCount++
-        acc[period].totalTransactions++
-
-        if (transaction.type === "income") {
-          acc[period].income += amount
-          categoryData.income += amount
-        } else if (transaction.type === "expense") {
-          acc[period].expenses += amount
-          categoryData.expenses += amount
-        }
-
-        return acc
-      },
-      {} as Record<
-        string,
-        {
-          period: string
-          income: number
-          expenses: number
-          date: Date
-          categories: Map<string, CategoryBreakdown>
-          totalTransactions: number
-        }
-      >
-    )
+      const categoryData = grouped[period].categories.get(invoiceCategory.code)!
+      categoryData.transactionCount++
+      categoryData.income += amount
+      grouped[period].income += amount
+      grouped[period].totalTransactions++
+    }
 
     return Object.values(grouped)
       .map((item) => ({

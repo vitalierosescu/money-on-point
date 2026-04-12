@@ -29,6 +29,36 @@ The authenticated app currently follows a Recommand-influenced system:
 - Tailwind aliases must map back to those CSS variables in `tailwind.config.ts`.
 - Do not scatter magic values across pages.
 
+## State Colors
+
+- Semantic meanings are shared app-wide:
+  - green = completed / good
+  - amber = caution / still needs action
+  - red = problem / overdue / failed
+  - blue = informational / verified / secondary process state
+  - gray = neutral / inactive / unsent / draft
+- Invoice payment states are the primary visual state language:
+  - `Draft` = light neutral gray
+  - `Unpaid` = stronger neutral gray, clearly distinct from `Draft`
+  - `Partially paid` = amber
+  - `Overdue` = red
+  - `Paid` = green
+  - `Cancelled` = gray with strikethrough
+- Invoice delivery states are secondary to payment and must use lighter emphasis:
+  - `Not sent` = muted gray
+  - `Ready` = subtle amber if shown
+  - `Verified` = muted blue
+  - `Sent` = green
+  - `Failed` = red
+- Timing cues are not standalone invoice states:
+  - `Due soon` means within 7 days of the deadline and appears only in due-date text/cues, not as a badge
+- Summary cards stay restrained:
+  - lightly tint labels/values only
+  - badges remain the strongest color signal
+- Environment chips remain separate from invoice state semantics:
+  - `Prod` = green
+  - `Playground` = amber
+
 ## Typography
 
 - Primary family: Rethink Sans

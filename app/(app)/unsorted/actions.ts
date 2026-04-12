@@ -8,9 +8,11 @@ import { transactionFormSchema } from "@/forms/transactions"
 import { ActionState } from "@/lib/actions"
 import { getCurrentUser, isAiBalanceExhausted, isSubscriptionExpired } from "@/lib/auth"
 import { prisma } from "@/lib/db"
+import { buildDocumentFilename, normalizeDocumentFilenameInput } from "@/lib/document-filenames"
 import {
+  ensureUniqueRelativeFilePath,
   getDirectorySize,
-  getTransactionFileUploadPath,
+  getNamedTransactionFileUploadPath,
   getUserUploadsDirectory,
   safePathJoin,
   unsortedFilePath,
@@ -23,7 +25,7 @@ import { getProjects } from "@/models/projects"
 import { getSettings } from "@/models/settings"
 import { createTransaction, TransactionData, updateTransactionFiles } from "@/models/transactions"
 import { updateUser } from "@/models/users"
-import { Category, Field, File, Prisma, Project, Transaction, User } from "@/prisma/client"
+import { Category, Field, File, Project, Transaction, User } from "@/prisma/client"
 import { randomUUID } from "crypto"
 import { mkdir, readFile, rename, writeFile } from "fs/promises"
 import { revalidatePath, revalidateTag } from "next/cache"
@@ -321,17 +323,37 @@ async function persistFileAsTransaction(
   data: TransactionData
 ): Promise<{ success: true; transaction: Transaction } | { success: false; error: string }> {
   try {
+    const generatedDocumentFilename = buildDocumentFilename({
+      issuedAt: data.issuedAt,
+      merchant: typeof data.merchant === "string" ? data.merchant : null,
+      originalFilename: file.filename,
+    })
+    const originalDocumentFilename =
+      normalizeDocumentFilenameInput({
+        name: file.filename,
+        originalFilename: file.filename,
+      }) ?? file.filename
+    const providedDocumentFilename = normalizeDocumentFilenameInput({
+      name: typeof data.name === "string" ? data.name : null,
+      originalFilename: file.filename,
+    })
+    const resolvedDocumentFilename =
+      generatedDocumentFilename && providedDocumentFilename === originalDocumentFilename
+        ? generatedDocumentFilename
+        : providedDocumentFilename ?? generatedDocumentFilename ?? file.filename
+
     // Auto-set status for expenses; income stays null
     const transactionData: TransactionData = {
       ...data,
+      name: resolvedDocumentFilename,
       ...((!data.type || data.type === "expense") ? { status: "unpaid" } : {}),
     }
     const transaction = await createTransaction(user.id, transactionData)
 
     // Move file to processed location
     const userUploadsDirectory = getUserUploadsDirectory(user)
-    const originalFileName = path.basename(file.path)
-    const newRelativeFilePath = getTransactionFileUploadPath(file.id, originalFileName, transaction)
+    const requestedRelativeFilePath = getNamedTransactionFileUploadPath(resolvedDocumentFilename, transaction)
+    const newRelativeFilePath = await ensureUniqueRelativeFilePath(userUploadsDirectory, requestedRelativeFilePath)
 
     const oldFullFilePath = safePathJoin(userUploadsDirectory, file.path)
     const newFullFilePath = safePathJoin(userUploadsDirectory, newRelativeFilePath)
@@ -339,6 +361,7 @@ async function persistFileAsTransaction(
     await rename(path.resolve(oldFullFilePath), path.resolve(newFullFilePath))
 
     await updateFile(file.id, user.id, {
+      filename: path.basename(newRelativeFilePath),
       path: newRelativeFilePath,
       isReviewed: true,
     })

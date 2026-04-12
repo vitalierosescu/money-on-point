@@ -1,24 +1,23 @@
 "use client"
 
+import { getMerchantAutofillAction, type MerchantAutofillProfile } from "@/app/(app)/expenses/actions"
 import { analyzeFileAction, deleteUnsortedFileAction, saveFileAsTransactionAction } from "@/app/(app)/unsorted/actions"
 import { CurrencyConverterTool } from "@/components/agents/currency-converter"
 import { ItemsDetectTool } from "@/components/agents/items-detect"
 import ToolWindow from "@/components/agents/tool-window"
 import { FormError } from "@/components/forms/error"
+import { LookupSelect } from "@/components/forms/lookup-select"
 import { MerchantAutocomplete } from "@/components/forms/merchant-autocomplete"
-import { FormSelectCategory } from "@/components/forms/select-category"
-import { FormSelectCurrency } from "@/components/forms/select-currency"
-import { FormSelectProject } from "@/components/forms/select-project"
-import { FormSelectType } from "@/components/forms/select-type"
 import { FormInput, FormTextarea } from "@/components/forms/simple"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { buildDocumentFilename } from "@/lib/document-filenames"
 import { t } from "@/lib/i18n"
 import { formatLocaleCurrency, formatLocaleDate, type UiLocale } from "@/lib/locale"
 import { TransactionData } from "@/models/transactions"
 import { Category, Currency, Field, File, Project } from "@/prisma/client"
-import { AlertTriangle, ArrowDownToLine, Brain, Loader2, Trash2 } from "lucide-react"
+import { AlertTriangle, ArrowDownToLine, Brain, Loader2, Plus, Trash2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { toast } from "sonner"
@@ -75,6 +74,27 @@ function normalizeDateField(value: unknown): string {
   return parsed ? parsed.toISOString().slice(0, 10) : ""
 }
 
+function isBlankFieldValue(value: unknown): boolean {
+  if (value === null || value === undefined) return true
+  if (typeof value === "string") return value.trim() === ""
+  if (Array.isArray(value)) return value.length === 0
+  return false
+}
+
+function formatAutofillValue(value: string | number): string {
+  return typeof value === "number" ? String(value) : value
+}
+
+function computeVatAmount(total: number, rate: number, basis: "gross" | "net"): string {
+  if (!Number.isFinite(total) || !Number.isFinite(rate) || total <= 0 || rate < 0) {
+    return ""
+  }
+
+  const amount = basis === "net" ? total * (rate / 100) : total * (rate / (100 + rate))
+  return amount > 0 ? amount.toFixed(2) : ""
+}
+
+
 export default function AnalyzeForm({
   file,
   categories,
@@ -104,7 +124,24 @@ export default function AnalyzeForm({
   const [isDeletePending, startDeleteTransition] = useTransition()
   const warningRef = useRef<HTMLDivElement | null>(null)
   const dirtyFieldsRef = useRef<Set<string>>(new Set())
+  const merchantVatProfileRef = useRef<{ rate: number; basis: "gross" | "net" } | null>(null)
+  const merchantAutofillRequestRef = useRef(0)
   const [editedFields, setEditedFields] = useState<Set<string>>(new Set())
+  const [isNameManuallyEdited, setIsNameManuallyEdited] = useState(false)
+  const [showDescription, setShowDescription] = useState(() => {
+    if (file.cachedParseResult && typeof file.cachedParseResult === "object") {
+      const cached = file.cachedParseResult as Record<string, unknown>
+      return !!(cached.description && String(cached.description).trim())
+    }
+    return false
+  })
+  const [showNote, setShowNote] = useState(() => {
+    if (file.cachedParseResult && typeof file.cachedParseResult === "object") {
+      const cached = file.cachedParseResult as Record<string, unknown>
+      return !!(cached.note && String(cached.note).trim())
+    }
+    return false
+  })
 
   const fieldMap = useMemo(() => {
     return fields.reduce(
@@ -155,25 +192,42 @@ export default function AnalyzeForm({
       {} as Record<string, string>
     )
 
-      // Load cached results if they exist
-      const cachedResults = file.cachedParseResult
-        ? Object.fromEntries(
-            Object.entries(file.cachedParseResult as Record<string, unknown>).filter(
-              ([, value]) => value !== null && value !== undefined && value !== ""
-            )
+    // Load cached results if they exist
+    const cachedResults = file.cachedParseResult
+      ? Object.fromEntries(
+          Object.entries(file.cachedParseResult as Record<string, unknown>).filter(
+            ([, value]) => value !== null && value !== undefined && value !== ""
           )
-        : {}
+        )
+      : {}
 
     const normalizedIssuedAt = normalizeDateField(cachedResults.issuedAt)
+    const generatedDocumentName = buildDocumentFilename({
+      issuedAt: normalizedIssuedAt,
+      merchant: typeof cachedResults.merchant === "string" ? cachedResults.merchant : "",
+      originalFilename: file.filename,
+    })
 
     return {
       ...baseState,
       ...extraFieldsState,
       ...cachedResults,
+      name:
+        generatedDocumentName ??
+        (typeof cachedResults.name === "string" && cachedResults.name.trim() ? cachedResults.name : baseState.name),
       issuedAt: normalizedIssuedAt,
     }
   }, [file.filename, settings, extraFields, file.cachedParseResult])
   const [formData, setFormData] = useState(initialFormState)
+  const generatedDocumentName = useMemo(
+    () =>
+      buildDocumentFilename({
+        issuedAt: formData.issuedAt,
+        merchant: typeof formData.merchant === "string" ? formData.merchant : "",
+        originalFilename: file.filename,
+      }),
+    [file.filename, formData.issuedAt, formData.merchant]
+  )
 
   const typeOptions = useMemo(
     () => [
@@ -224,6 +278,7 @@ export default function AnalyzeForm({
   const totalValue = parseAmount(formData.total)
   const issuedAtValue = parseDateInput(formData.issuedAt)
   const currencyCode = typeof formData.currencyCode === "string" ? formData.currencyCode : ""
+  const vatRateValue = (formData as Record<string, unknown>).vat_rate
   const itemsData = useMemo<TransactionData>(
     () => ({
       ...formData,
@@ -237,6 +292,50 @@ export default function AnalyzeForm({
   useEffect(() => {
     setRequiresWarningReview(false)
   }, [warningFingerprint])
+
+  useEffect(() => {
+    if (formData.description && String(formData.description).trim()) setShowDescription(true)
+  }, [formData.description])
+
+  useEffect(() => {
+    if (formData.note && String(formData.note).trim()) setShowNote(true)
+  }, [formData.note])
+
+  useEffect(() => {
+    if (isNameManuallyEdited || !generatedDocumentName) return
+
+    dirtyFieldsRef.current.add("name")
+    setFormData((prev) => (prev.name === generatedDocumentName ? prev : { ...prev, name: generatedDocumentName }))
+  }, [generatedDocumentName, isNameManuallyEdited])
+
+  useEffect(() => {
+    const merchantVatProfile = merchantVatProfileRef.current
+    if (!merchantVatProfile) return
+    if (dirtyFieldsRef.current.has("vat") || dirtyFieldsRef.current.has("vat_rate") || cachedParseFields.has("vat")) return
+
+    const total = parseAmount(formData.total)
+    const currentVatRate = parseAmount(vatRateValue)
+    const vatRate = currentVatRate ?? merchantVatProfile.rate
+    const nextVat =
+      total !== null && total > 0 && vatRate !== null
+        ? computeVatAmount(total, vatRate, merchantVatProfile.basis)
+        : ""
+
+    setFormData((prev) => {
+      const currentVat = typeof (prev as Record<string, unknown>).vat === "string"
+        ? ((prev as Record<string, unknown>).vat as string)
+        : ""
+
+      if (currentVat === nextVat) {
+        return prev
+      }
+
+      return {
+        ...prev,
+        vat: nextVat,
+      }
+    })
+  }, [cachedParseFields, formData.total, vatRateValue])
 
   const reviewRows = useMemo(() => {
     const amount = parseAmount(formData.total)
@@ -273,8 +372,78 @@ export default function AnalyzeForm({
 
   const updateField = (name: string, value: unknown) => {
     dirtyFieldsRef.current.add(name)
+    if (name === "merchant" || name === "vat" || name === "vat_rate") {
+      merchantVatProfileRef.current = null
+    }
     setEditedFields((prev) => new Set(prev).add(name))
     setFormData((prev) => ({ ...prev, [name]: value }))
+  }
+
+  function mergeMerchantAutofill(profile: MerchantAutofillProfile) {
+    merchantVatProfileRef.current =
+      profile.vatRate !== null
+        ? { rate: profile.vatRate, basis: profile.vatComputationBasis }
+        : null
+
+    setFormData((prev) => {
+      const next = { ...prev } as Record<string, unknown>
+
+      Object.entries(profile.fields).forEach(([key, value]) => {
+        if (dirtyFieldsRef.current.has(key)) return
+        if (!isBlankFieldValue(next[key]) && cachedParseFields.has(key)) return
+        next[key] = formatAutofillValue(value)
+      })
+
+      if (
+        profile.vatRate !== null &&
+        !dirtyFieldsRef.current.has("vat_rate") &&
+        (isBlankFieldValue(next.vat_rate) || !cachedParseFields.has("vat_rate"))
+      ) {
+        next.vat_rate = formatAutofillValue(profile.vatRate)
+      }
+
+      const resolvedVatRate = parseAmount(next.vat_rate) ?? profile.vatRate
+      const total = parseAmount(next.total)
+      if (
+        resolvedVatRate !== null &&
+        !dirtyFieldsRef.current.has("vat") &&
+        (isBlankFieldValue(next.vat) || !cachedParseFields.has("vat")) &&
+        total !== null &&
+        total > 0
+      ) {
+        next.vat = computeVatAmount(total, resolvedVatRate, profile.vatComputationBasis)
+      }
+
+      return next as typeof prev
+    })
+  }
+
+  async function handleMerchantSelect(merchant: string) {
+    const trimmedMerchant = merchant.trim()
+    merchantAutofillRequestRef.current += 1
+    const requestId = merchantAutofillRequestRef.current
+
+    if (!trimmedMerchant) {
+      merchantVatProfileRef.current = null
+      return
+    }
+
+    const result = await getMerchantAutofillAction(trimmedMerchant)
+    if (merchantAutofillRequestRef.current !== requestId) {
+      return
+    }
+
+    if (!result.success) {
+      console.error(result.error)
+      return
+    }
+
+    if (!result.profile) {
+      merchantVatProfileRef.current = null
+      return
+    }
+
+    mergeMerchantAutofill(result.profile)
   }
 
   function getFieldBadge(fieldCode: string) {
@@ -428,20 +597,22 @@ export default function AnalyzeForm({
           </div>
         )}
 
-        <div className="rounded-card border bg-card p-4">
-          <div className="text-sm font-semibold">{t(locale, "analyze.reviewTitle")}</div>
-          <p className="mt-1 text-sm text-muted-foreground">{t(locale, "analyze.reviewDescription")}</p>
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
-            {reviewRows.map((row) => (
-              <div key={row.label} className="rounded-md border bg-background px-3 py-2">
-                <div className="text-xs uppercase tracking-wide text-muted-foreground">{row.label}</div>
-                <div className={`mt-1 text-sm font-medium ${row.tone}`}>{row.value}</div>
-              </div>
-            ))}
+        {requiresWarningReview && (
+          <div className="rounded-card border bg-card p-4">
+            <div className="text-sm font-semibold">{t(locale, "analyze.reviewTitle")}</div>
+            <p className="mt-1 text-sm text-muted-foreground">{t(locale, "analyze.reviewDescription")}</p>
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              {reviewRows.map((row) => (
+                <div key={row.label} className="rounded-md border bg-background px-3 py-2">
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">{row.label}</div>
+                  <div className={`mt-1 text-sm font-medium ${row.tone}`}>{row.value}</div>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
-        {warnings.length > 0 && (
+        {warnings.length > 0 && requiresWarningReview && (
           <div ref={warningRef}>
             <Alert className="border-amber-200 bg-amber-50 text-amber-900">
               <AlertTriangle className="h-4 w-4" />
@@ -473,7 +644,10 @@ export default function AnalyzeForm({
           title={fieldTitle(fieldMap.name.name, "name")}
           name="name"
           value={formData.name}
-          onChange={(e) => updateField("name", e.target.value)}
+          onChange={(e) => {
+            setIsNameManuallyEdited(true)
+            updateField("name", e.target.value)
+          }}
           required={fieldMap.name.isRequired}
         />
 
@@ -482,17 +656,32 @@ export default function AnalyzeForm({
           name="merchant"
           value={formData.merchant ?? ""}
           onChange={(next) => updateField("merchant", next)}
+          onSelect={handleMerchantSelect}
           required={fieldMap.merchant.isRequired}
           locale={locale}
         />
 
-        <FormInput
-          title={fieldTitle(fieldMap.description.name, "description")}
-          name="description"
-          value={formData.description}
-          onChange={(e) => updateField("description", e.target.value)}
-          required={fieldMap.description.isRequired}
-        />
+        {showDescription ? (
+          <FormInput
+            title={fieldTitle(fieldMap.description.name, "description")}
+            name="description"
+            value={formData.description}
+            onChange={(e) => updateField("description", e.target.value)}
+            required={fieldMap.description.isRequired}
+          />
+        ) : (
+          <>
+            <input type="hidden" name="description" value={formData.description ?? ""} />
+            <button
+              type="button"
+              onClick={() => setShowDescription(true)}
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {fieldMap.description.name}
+            </button>
+          </>
+        )}
 
         <div className="flex flex-wrap gap-4">
           <FormInput
@@ -515,23 +704,18 @@ export default function AnalyzeForm({
             required={fieldMap.total.isRequired}
           />
 
-          <FormSelectCurrency
+          <LookupSelect
             title={fieldTitle(fieldMap.currencyCode.name, "currencyCode")}
-            currencies={currencies}
             name="currencyCode"
-            value={formData.currencyCode}
+            value={formData.currencyCode ?? ""}
+            items={currencies.map((c) => ({ code: c.code, name: c.code }))}
             onValueChange={(value) => updateField("currencyCode", value)}
+            placeholder="–"
             isRequired={fieldMap.currencyCode.isRequired}
+            locale={locale}
           />
 
-          <FormSelectType
-            title={fieldTitle(fieldMap.type.name, "type")}
-            name="type"
-            value={formData.type}
-            onValueChange={(value) => updateField("type", value)}
-            isRequired={fieldMap.type.isRequired}
-            options={typeOptions}
-          />
+          <input type="hidden" name="type" value={formData.type} />
         </div>
 
         {totalValue !== null &&
@@ -571,48 +755,110 @@ export default function AnalyzeForm({
         </div>
 
         <div className="flex flex-row gap-4">
-          <FormSelectCategory
+          <LookupSelect
             title={fieldTitle(fieldMap.categoryCode.name, "categoryCode")}
-            categories={categories}
             name="categoryCode"
-            value={formData.categoryCode}
+            value={formData.categoryCode ?? ""}
+            items={categories.map((c) => ({ code: c.code, name: c.name, color: c.color ?? undefined }))}
             onValueChange={(value) => updateField("categoryCode", value)}
             placeholder={t(locale, "analyze.selectCategory")}
             isRequired={fieldMap.categoryCode.isRequired}
+            locale={locale}
           />
 
           {projects.length > 0 && (
-            <FormSelectProject
+            <LookupSelect
               title={fieldTitle(fieldMap.projectCode.name, "projectCode")}
-              projects={projects}
               name="projectCode"
-              value={formData.projectCode}
+              value={formData.projectCode ?? ""}
+              items={projects.map((p) => ({ code: p.code, name: p.name, color: p.color ?? undefined }))}
               onValueChange={(value) => updateField("projectCode", value)}
               placeholder={t(locale, "analyze.selectProject")}
               isRequired={fieldMap.projectCode.isRequired}
+              locale={locale}
             />
           )}
         </div>
 
-        <FormInput
-          title={fieldTitle(fieldMap.note.name, "note")}
-          name="note"
-          value={formData.note}
-          onChange={(e) => updateField("note", e.target.value)}
-          required={fieldMap.note.isRequired}
-        />
-
-        {extraFields.map((field) => (
+        {showNote ? (
           <FormInput
-            key={field.code}
-            type="text"
-            title={fieldTitle(field.name, field.code)}
-            name={field.code}
-            value={formData[field.code as keyof typeof formData]}
-            onChange={(e) => updateField(field.code, e.target.value)}
-            required={field.isRequired}
+            title={fieldTitle(fieldMap.note.name, "note")}
+            name="note"
+            value={formData.note}
+            onChange={(e) => updateField("note", e.target.value)}
+            required={fieldMap.note.isRequired}
           />
-        ))}
+        ) : (
+          <>
+            <input type="hidden" name="note" value={formData.note ?? ""} />
+            <button
+              type="button"
+              onClick={() => setShowNote(true)}
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {fieldMap.note.name}
+            </button>
+          </>
+        )}
+
+        {(() => {
+          const vatRateField = extraFields.find((f) => f.code === "vat_rate")
+          const vatField = extraFields.find((f) => f.code === "vat")
+          const regularExtraFields = extraFields.filter((f) => f.code !== "vat_rate" && f.code !== "vat")
+
+          return (
+            <>
+              {regularExtraFields.map((field) => (
+                <FormInput
+                  key={field.code}
+                  type="text"
+                  title={fieldTitle(field.name, field.code)}
+                  name={field.code}
+                  value={formData[field.code as keyof typeof formData]}
+                  onChange={(e) => updateField(field.code, e.target.value)}
+                  required={field.isRequired}
+                />
+              ))}
+
+              {(vatRateField || vatField) && (
+                <div className="flex flex-row items-end gap-4">
+                  {vatRateField && (
+                    <div className="w-28 shrink-0">
+                      <LookupSelect
+                        title={fieldTitle(vatRateField.name, vatRateField.code)}
+                        name={vatRateField.code}
+                        value={String((formData as Record<string, unknown>)[vatRateField.code] ?? "")}
+                        items={[
+                          { code: "0", name: "0%" },
+                          { code: "6", name: "6%" },
+                          { code: "21", name: "21%" },
+                        ]}
+                        onValueChange={(value) => updateField(vatRateField.code, value)}
+                        placeholder="–"
+                        isRequired={vatRateField.isRequired}
+                        locale={locale}
+                      />
+                    </div>
+                  )}
+                  {vatField && (
+                    <div className="flex-1">
+                      <FormInput
+                        title={fieldTitle(vatField.name, vatField.code)}
+                        name={vatField.code}
+                        type="number"
+                        step="0.01"
+                        value={String((formData as Record<string, unknown>)[vatField.code] ?? "")}
+                        onChange={(e) => updateField(vatField.code, e.target.value)}
+                        required={vatField.isRequired}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )
+        })()}
 
         {Array.isArray(formData.items) && formData.items.length > 0 && (
           <ToolWindow title={t(locale, "analyze.detectedItems")}>
